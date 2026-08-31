@@ -1,0 +1,1103 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Geminiflow Paneli</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f3f1ec; --surface: #ffffff; --surface-2: #e9e4da;
+    --text: #1b1912; --text-dim: #6e6656;
+    --accent: #0e7a72; --accent-2: #d9642a; --border: #ddd6c7;
+    --ok: #2e8b57; --danger: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141210; --surface: #1d1a16; --surface-2: #28241e;
+      --text: #f1ece1; --text-dim: #a69a85;
+      --accent: #4cd6cb; --accent-2: #ff8952; --border: #38332a;
+      --ok: #5fcb86; --danger: #ff6b60;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "IBM Plex Sans", system-ui, sans-serif; }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 48px 20px 80px; }
+  h1 { font-family: "Fraunces", Georgia, serif; font-weight: 600; font-size: 32px; margin: 0 0 6px; }
+  header p { color: var(--text-dim); font-size: 15px; margin: 0 0 20px; max-width: 48ch; line-height: 1.5; }
+  .account-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 28px; color: var(--text-dim); font-size: 12px; }
+  .account-bar form { margin-left: auto; }
+  .credits-badge { border: 1px solid var(--border); border-radius: 999px; padding: 5px 9px; color: var(--accent); font-family: "IBM Plex Mono", monospace; font-size: 11px; }
+  .account-btn { border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--text); padding: 7px 12px; cursor: pointer; }
+  .settings-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; margin-bottom: 28px; }
+  .settings-panel[hidden] { display: none; }
+  .user-row { display: flex; gap: 8px; margin-top: 10px; }
+  .user-row input { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; background: var(--surface-2); color: var(--text); }
+  .user-list { display: grid; gap: 8px; margin-top: 12px; }
+  .user-item { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+  .category-list { display: grid; gap: 10px; margin-top: 12px; }
+  .category-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px; background: var(--surface-2); }
+  .category-card-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .category-card-top strong { font-size: 13.5px; }
+  .category-status { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; padding: 3px 8px; border-radius: 999px; }
+  .category-status.connected { color: var(--ok); background: color-mix(in srgb, var(--ok) 16%, var(--surface)); }
+  .category-status.disconnected { color: var(--text-dim); background: var(--surface); }
+  .category-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; }
+  .category-actions select { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); padding: 5px 8px; font-family: inherit; font-size: 12px; }
+  .category-meta { font-size: 11px; color: var(--text-dim); }
+  .category-error { font-size: 11px; color: var(--danger); }
+  .toggle-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+  .composer { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; margin-bottom: 36px; box-shadow: 0 1px 2px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.06); }
+  textarea { width: 100%; min-height: 84px; resize: vertical; border: none; outline: none; background: transparent; color: var(--text); font-family: inherit; font-size: 15px; line-height: 1.5; padding: 4px 2px 12px; }
+  .row { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 12px; }
+  .hint { font-size: 12.5px; color: var(--text-dim); font-family: "IBM Plex Mono", monospace; }
+  button.submit { border: none; border-radius: 999px; background: var(--accent); color: var(--bg); font-weight: 600; font-size: 14px; padding: 10px 20px; cursor: pointer; }
+  button.submit:disabled { opacity: .45; cursor: not-allowed; }
+  .queue-label { font-family: "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .08em; font-size: 11.5px; color: var(--text-dim); margin: 0 0 14px; }
+  .job { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; margin-bottom: 12px; }
+  .job-top { display: flex; justify-content: flex-end; }
+  .job p.prompt { margin: 0; font-size: 14.5px; line-height: 1.5; }
+  .pill { font-family: "IBM Plex Mono", monospace; font-size: 11px; padding: 4px 10px; border-radius: 999px; white-space: nowrap; height: fit-content; }
+  .pill.bekliyor { color: var(--text-dim); background: var(--surface-2); }
+  .pill.işleniyor { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+  .pill.hazır { color: var(--ok); background: color-mix(in srgb, var(--ok) 16%, var(--surface)); }
+  .pill.hata { color: var(--danger); background: color-mix(in srgb, var(--danger) 16%, var(--surface)); }
+  video { width: 100%; border-radius: 10px; background: #000; display: block; }
+  .video-pair { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; margin-bottom: 10px; }
+  .video-slot { flex: 1 1 220px; max-width: 260px; }
+  .video-label { display: block; font-family: "IBM Plex Mono", monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin-bottom: 4px; }
+  .job-youtube-actions { display: flex; gap: 8px; align-items: center; margin-top: 10px; margin-bottom: 6px; }
+  .job-youtube-actions select { border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text); padding: 6px 10px; font-family: inherit; font-size: 12px; }
+  .job-youtube-actions button { border: none; border-radius: 8px; background: var(--accent); color: var(--bg); font-weight: 600; font-size: 12px; padding: 6px 12px; cursor: pointer; }
+  .job-youtube-actions button:disabled { opacity: .45; cursor: not-allowed; }
+  .note { font-size: 13px; color: var(--danger); margin-top: 6px; margin-bottom: 6px; }
+  details.prompt-collapse summary { cursor: pointer; list-style: none; }
+  details.prompt-collapse summary::-webkit-details-marker { display: none; }
+  details.prompt-collapse summary .trunc-text { font-size: 14.5px; line-height: 1.5; color: var(--text-dim); }
+  details.prompt-collapse[open] summary .trunc-text { display: none; }
+  details.prompt-collapse summary .expand-hint { display: inline-block; margin-top: 4px; font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--accent); }
+  details.prompt-collapse summary .expand-hint::before { content: "tamamını göster ▾"; }
+  details.prompt-collapse[open] summary .expand-hint::before { content: "▲ daralt"; }
+  .empty { color: var(--text-dim); font-size: 14px; padding: 24px 0; text-align: center; border: 1px dashed var(--border); border-radius: 14px; }
+  .settings { display: flex; flex-wrap: wrap; gap: 14px; border-top: 1px solid var(--border); padding: 12px 2px; margin-top: 4px; }
+  .setting-group { display: flex; flex-direction: column; gap: 5px; }
+  .setting-group label { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
+  .seg { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { border: none; background: var(--surface-2); color: var(--text-dim); font-family: "IBM Plex Mono", monospace; font-size: 12px; padding: 5px 10px; cursor: pointer; border-right: 1px solid var(--border); }
+  .seg button:last-child { border-right: none; }
+  .seg button.active { background: var(--accent); color: var(--bg); font-weight: 600; }
+  select.model-select { font-family: "IBM Plex Mono", monospace; font-size: 12px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; }
+  .job .meta-settings { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .pool-box { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; margin-bottom: 36px; }
+  .pool-inputs { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+  .pool-row { display: flex; align-items: stretch; gap: 10px; }
+  .pool-fields { flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; }
+  .pool-input { min-width: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text); font-family: inherit; font-size: 14px; padding: 9px 12px; }
+  .pool-input:focus { outline: none; border-color: var(--accent); }
+  .pool-prompt-input { grid-column: 1 / -1; }
+  .pool-img-btn { flex-shrink: 0; width: 82px; min-height: 82px; border-radius: 12px; border: 1px dashed var(--border); background: var(--surface-2); color: var(--text-dim); cursor: pointer; overflow: hidden; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+  .pool-img-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .pool-img-btn img { width: 100%; height: 100%; object-fit: cover; }
+  .pool-row input[type="file"] { display: none; }
+  .pool-box .row { border-top: none; padding-top: 0; }
+  button.ghost-btn { border: 1px dashed var(--border); border-radius: 999px; background: transparent; color: var(--text-dim); font-family: inherit; font-size: 13px; padding: 8px 16px; cursor: pointer; }
+  button.ghost-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .pool-filters { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 16px; }
+  .pool-filter { border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--text-dim); font-family: inherit; font-size: 12px; padding: 6px 11px; cursor: pointer; }
+  .pool-filter:hover, .pool-filter.active { border-color: var(--accent); background: var(--accent); color: var(--bg); }
+  .pool-list { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 20px 14px; margin-top: 18px; }
+  .pool-chip { position: relative; display: block; width: 112px; margin: 0 auto; border: none; background: transparent; padding: 0; cursor: pointer; text-align: center; transition: transform .18s ease; }
+  .pool-chip:hover { transform: translateY(-3px); }
+  .pool-chip .chip-image { position: relative; display: block; width: 96px; height: 96px; min-width: 96px; min-height: 96px; aspect-ratio: 1 / 1; margin: 0 auto 8px; border: 2px solid var(--border); border-radius: 999px; background: var(--surface-2); box-shadow: 0 8px 22px rgba(0,0,0,.16); transition: border-color .18s ease, box-shadow .18s ease; }
+  .pool-chip:hover .chip-image { border-color: var(--accent); box-shadow: 0 12px 28px rgba(0,0,0,.24); }
+  .pool-chip .chip-thumb { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: inherit; object-fit: cover; }
+  .pool-chip .chip-name { display: block; color: var(--text); font-size: 13px; font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pool-chip .chip-description { display: -webkit-box; margin-top: 3px; color: var(--text-dim); font-size: 11px; line-height: 1.3; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .pool-chip .chip-del { position: absolute; z-index: 2; top: -5px; right: -5px; width: 23px; height: 23px; border-radius: 50%; border: 2px solid var(--surface); background: var(--danger); color: #fff; font-size: 14px; line-height: 18px; cursor: pointer; opacity: 0; transform: scale(.8); transition: opacity .18s ease, transform .18s ease; }
+  .pool-chip:hover .chip-del, .pool-chip:focus-within .chip-del { opacity: 1; transform: scale(1); }
+  .pool-chip .chip-del:hover { filter: brightness(1.12); }
+  .pagination { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 18px; }
+  .page-btn { border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font-family: inherit; font-size: 13px; padding: 8px 14px; cursor: pointer; }
+  .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .page-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .page-info { color: var(--text-dim); font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+
+  .ai-modal-overlay[hidden] { display: none; }
+  .ai-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+  .ai-modal { width: 100%; max-width: 560px; max-height: 80vh; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+  .ai-modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--border); font-family: "Fraunces", Georgia, serif; font-weight: 600; font-size: 17px; }
+  .ai-modal-close { border: none; background: transparent; color: var(--text-dim); font-size: 20px; cursor: pointer; line-height: 1; padding: 4px 8px; }
+  .ai-modal-close:hover { color: var(--text); }
+  .ai-transcript { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+  .ai-msg { max-width: 85%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+  .ai-msg.ai { align-self: flex-start; background: var(--surface-2); color: var(--text); }
+  .ai-msg.user { align-self: flex-end; background: var(--accent); color: var(--bg); }
+  .ai-msg.pending { align-self: flex-start; background: var(--surface-2); color: var(--text-dim); font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+  .ai-msg.final { align-self: stretch; background: color-mix(in srgb, var(--ok) 14%, var(--surface)); border: 1px solid var(--ok); }
+  .ai-suggestions { align-self: stretch; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: -2px; }
+  .suggestion-chip { position: relative; min-height: 54px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); font-family: inherit; font-size: 12.5px; line-height: 1.35; padding: 10px 12px 10px 38px; cursor: pointer; text-align: left; box-shadow: 0 2px 8px rgba(0,0,0,.06); transition: border-color .16s ease, transform .16s ease, background .16s ease; }
+  .suggestion-chip::before { content: attr(data-index); position: absolute; left: 11px; top: 11px; width: 19px; height: 19px; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--accent) 16%, var(--surface)); color: var(--accent); font-family: "IBM Plex Mono", monospace; font-size: 10px; font-weight: 600; }
+  .suggestion-chip:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); transform: translateY(-2px); }
+  .suggestion-chip.selected { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, var(--surface)); }
+  @media (max-width: 520px) { .ai-suggestions { grid-template-columns: 1fr; } }
+  .pilot-toast[hidden] { display: none; }
+  .pilot-toast { position: fixed; z-index: 90; right: 20px; bottom: 20px; width: min(330px, calc(100vw - 40px)); display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; background: var(--surface); color: var(--text); box-shadow: 0 16px 42px rgba(0,0,0,.22); cursor: pointer; text-align: left; }
+  .pilot-toast:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .pilot-spinner { width: 20px; height: 20px; flex: 0 0 auto; border: 2px solid var(--surface-2); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+  .pilot-toast.success .pilot-spinner, .pilot-toast.error .pilot-spinner { animation: none; display: grid; place-items: center; border: 0; }
+  .pilot-toast.success .pilot-spinner::after { content: "✓"; color: var(--ok); font-weight: 700; }
+  .pilot-toast.error .pilot-spinner::after { content: "!"; color: var(--danger); font-weight: 700; }
+  .pilot-toast-copy { min-width: 0; display: grid; gap: 2px; }
+  .pilot-toast-copy strong { font-size: 13px; }
+  .pilot-toast-copy span { overflow: hidden; color: var(--text-dim); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .ai-answer-row { display: flex; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--border); }
+  .ai-answer-row input { flex: 1; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text); font-family: inherit; font-size: 14px; padding: 9px 12px; }
+  .ai-answer-row input:focus { outline: none; border-color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Geminiflow Paneli</h1>
+    <p>Prompt yaz, gönder. Video arka planda Google Flow'da üretilir; hazır olunca aşağıda oynatabilirsin.</p>
+  </header>
+  <div class="account-bar">
+    <span>{{ current_user }}</span>
+    <span class="credits-badge" id="creditsBadge" title="Flow kredisi">— kredi</span>
+    {% if is_admin %}<button type="button" class="account-btn" id="settingsToggle">Ayarlar</button>{% endif %}
+    <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="account-btn" type="submit">Çıkış</button></form>
+  </div>
+  {% if is_admin %}
+  <section class="settings-panel" id="settingsPanel" hidden>
+    <strong>Google kullanıcıları</strong>
+    <div class="user-row"><input type="email" id="newUserEmail" placeholder="kullanici@gmail.com"><button type="button" class="submit" id="addUserBtn">Ekle</button></div>
+    <div class="user-list" id="userList"></div>
+    <strong style="display:block;margin-top:18px;">YouTube Otomasyon Kategorileri</strong>
+    <p class="hint" style="margin:4px 0 0;">Prompt Havuzu'na eklediğin her kategori burada otomatik listelenir; ayrıca eksikse buradan da ekleyebilirsin.</p>
+    <div class="user-row"><input type="text" id="newCategoryName" placeholder="Kategori adı (örn. Doğa)"><button type="button" class="submit" id="addCategoryBtn">Ekle</button></div>
+    <div class="category-list" id="categoryList"></div>
+  </section>
+  {% endif %}
+
+  <form class="composer" id="composer">
+    <textarea id="promptInput" placeholder="Örn: dağ yolunda ilerleyen kırmızı bir motosiklet, altın saat ışığı, sinematik…" required></textarea>
+
+    <div class="settings">
+      <div class="setting-group">
+        <label>Tür</label>
+        <div class="seg" data-key="type">
+          <button type="button" data-val="video" class="active">Video</button>
+        </div>
+      </div>
+      <div class="setting-group">
+        <label>Oran</label>
+        <div class="seg" data-key="ratio">
+          <button type="button" data-val="16:9">16:9</button>
+          <button type="button" data-val="9:16" class="active">9:16</button>
+        </div>
+      </div>
+      <div class="setting-group">
+        <label>Çözünürlük</label>
+        <div class="seg" data-key="resolution">
+          <button type="button" data-val="720p" class="active">720p</button>
+          <button type="button" data-val="360p">360p</button>
+        </div>
+      </div>
+      <div class="setting-group">
+        <label>Süre</label>
+        <div class="seg" data-key="duration">
+          <button type="button" data-val="4s">4s</button>
+          <button type="button" data-val="6s">6s</button>
+          <button type="button" data-val="8s">8s</button>
+          <button type="button" data-val="10s" class="active">10s</button>
+        </div>
+      </div>
+      <div class="setting-group">
+        <label>Sayı</label>
+        <div class="seg" data-key="count">
+          <button type="button" data-val="x1" class="active">x1</button>
+        </div>
+      </div>
+      <div class="setting-group">
+        <label>Model</label>
+        <select class="model-select" id="modelSelect">
+          <option value="omni-flash" selected>Omni Flash</option>
+          <option value="veo-lite">Veo 3.1 - Lite</option>
+          <option value="veo-fast">Veo 3.1 - Fast</option>
+          <option value="veo-quality">Veo 3.1 - Quality</option>
+        </select>
+      </div>
+      <div class="setting-group">
+        <label>YouTube Otomasyonu</label>
+        <select class="model-select" id="automationCategorySelect">
+          <option value="">Paylaşma</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row">
+      <span class="hint">flow_bot · labs.google/flow</span>
+      <button type="submit" class="submit" id="submitBtn">Video Oluştur</button>
+    </div>
+  </form>
+
+  <p class="queue-label">Prompt Havuzu</p>
+  <div class="pool-box">
+    <div id="poolInputs" class="pool-inputs"></div>
+    <div class="row">
+      <button type="button" class="ghost-btn" id="addPoolRowBtn">+ Satır ekle</button>
+      <button type="button" class="submit" id="savePoolBtn">Havuza Kaydet</button>
+    </div>
+    <div id="poolFilters" class="pool-filters"></div>
+    <div id="poolList" class="pool-list"></div>
+  </div>
+
+  <p class="queue-label">Kuyruk</p>
+  <div id="queue"></div>
+  <div id="jobPagination" class="pagination"></div>
+</div>
+
+<button type="button" class="pilot-toast" id="pilotToast" hidden aria-live="polite">
+  <span class="pilot-spinner" aria-hidden="true"></span>
+  <span class="pilot-toast-copy"><strong id="pilotToastTitle">İşleniyor</strong><span id="pilotToastDetail">Prompt asistanı arka planda çalışıyor</span></span>
+</button>
+
+<div id="aiModal" class="ai-modal-overlay" hidden>
+  <div class="ai-modal">
+    <div class="ai-modal-head">
+      <span>Prompt Asistanı</span>
+      <button type="button" class="ai-modal-close" id="aiModalClose">×</button>
+    </div>
+    <div id="aiTranscript" class="ai-transcript"></div>
+    <form id="aiAnswerForm" class="ai-answer-row">
+      <input type="text" id="aiAnswerInput" placeholder="Cevabını yaz…" autocomplete="off">
+      <button type="submit" class="submit" id="aiAnswerSend">Gönder</button>
+    </form>
+  </div>
+</div>
+
+<script>
+var CSRF_TOKEN = {{ csrf_token | tojson }};
+var originalFetch = window.fetch;
+window.fetch = function (url, options) {
+  options = options || {};
+  var method = String(options.method || "GET").toUpperCase();
+  if (["POST", "PUT", "PATCH", "DELETE"].indexOf(method) !== -1) {
+    options.headers = new Headers(options.headers || {});
+    options.headers.set("X-CSRF-Token", CSRF_TOKEN);
+  }
+  return originalFetch(url, options);
+};
+function escStr(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+var MODEL_LABELS = { "omni-flash": "Omni Flash", "veo-lite": "Veo 3.1 Lite", "veo-fast": "Veo 3.1 Fast", "veo-quality": "Veo 3.1 Quality" };
+
+function settingsSummary(s) {
+  if (!s) return "";
+  var parts = [];
+  if (s.type) parts.push(s.type === "image" ? "Görüntü" : "Video");
+  if (s.ratio) parts.push(s.ratio);
+  if (s.resolution) parts.push(s.resolution);
+  if (s.duration) parts.push(s.duration);
+  if (s.count) parts.push(s.count);
+  if (s.model) parts.push(MODEL_LABELS[s.model] || s.model);
+  return parts.join(" · ");
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  var date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("tr-TR", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit"
+  }).format(date);
+}
+
+var PROMPT_COLLAPSE_LEN = 200;
+
+function promptHtml(text) {
+  if (text.length <= PROMPT_COLLAPSE_LEN) {
+    return '<p class="prompt">' + escStr(text) + "</p>";
+  }
+  var short = escStr(text.slice(0, PROMPT_COLLAPSE_LEN)) + "…";
+  return '<details class="prompt-collapse">' +
+    '<summary><span class="trunc-text">' + short + '</span><span class="expand-hint"></span></summary>' +
+    '<p class="prompt">' + escStr(text) + "</p>" +
+    "</details>";
+}
+
+var JOBS_PER_PAGE = 10;
+var currentJobsPage = 1;
+var latestJobs = [];
+
+function renderJobs(jobs) {
+  var q = document.getElementById("queue");
+  var pagination = document.getElementById("jobPagination");
+  if (!jobs.length) { q.innerHTML = '<div class="empty">Henüz istek yok. Yukarıdan ilk promptu gönder.</div>'; pagination.innerHTML = ""; return; }
+  var pageCount = Math.ceil(jobs.length / JOBS_PER_PAGE);
+  if (currentJobsPage > pageCount) currentJobsPage = pageCount;
+  var start = (currentJobsPage - 1) * JOBS_PER_PAGE;
+  var pageJobs = jobs.slice(start, start + JOBS_PER_PAGE);
+  q.innerHTML = pageJobs.map(function (j) {
+    var videoHtml = "";
+    if (j.status === "hazır" && j.videoFile) {
+      videoHtml = '<div class="video-pair">' +
+        '<div class="video-slot"><span class="video-label">Normal</span>' +
+        '<video controls src="/videos/' + encodeURIComponent(j.videoFile) + '"></video></div>';
+      videoHtml += "</div>";
+    }
+    var noteHtml = j.note ? '<p class="note">' + escStr(j.note) + "</p>" : "";
+    var summary = settingsSummary(j.settings);
+    var createdAt = formatDateTime(j.createdAt);
+    var metaParts = [];
+    if (createdAt) metaParts.push(createdAt);
+    if (summary) metaParts.push(summary);
+    var metaHtml = metaParts.length ? '<p class="meta-settings">' + escStr(metaParts.join(" · ")) + "</p>" : "";
+    var youtubeHtml = "";
+    if (j.youtubeStatus === "paylaşıldı") {
+      youtubeHtml = '<p class="meta-settings">▶ YouTube Shorts: ' + (j.youtubeUrl ? '<a href="' + escStr(j.youtubeUrl) + '" target="_blank" rel="noopener">yayında</a>' : "yayında") + "</p>";
+    } else if (j.youtubeStatus === "taslak") {
+      youtubeHtml = '<p class="meta-settings">YouTube taslağı hazır · AI başlık, etiket ve kapak ayarlandı.</p>';
+    } else if (j.youtubeStatus === "paylaşılıyor") {
+      youtubeHtml = '<p class="meta-settings">YouTube’a paylaşılıyor...</p>';
+    } else if (j.youtubeStatus === "hata") {
+      youtubeHtml = '<p class="note">YouTube paylaşımı başarısız: ' + escStr(j.youtubeError || "") + "</p>";
+    }
+    var actionHtml = "";
+    if (j.status === "hazır" && j.videoFile) {
+      var categoryOptions = ['<option value="">Kategori seç</option>'].concat(automationCategories.filter(function (c) { return c.connected; }).map(function (c) {
+        return '<option value="' + escStr(c.id) + '"' + (j.categoryId === c.id ? ' selected' : '') + '>' + escStr(c.name) + '</option>';
+      })).join("");
+      var shareDisabled = !j.categoryId || j.youtubeStatus === "paylaşılıyor" || j.youtubeStatus === "paylaşıldı" || j.youtubeStatus === "taslak";
+      actionHtml = '<div class="job-youtube-actions"><select class="job-category" data-job-id="' + escStr(j.id) + '">' + categoryOptions + '</select>' +
+        '<button type="button" class="job-share" data-job-id="' + escStr(j.id) + '"' + (shareDisabled ? ' disabled' : '') + '>YouTube’da Paylaş</button></div>';
+    }
+    return '<div class="job">' +
+      '<div class="job-top"><span class="pill ' + escStr(j.status) + '">' + escStr(j.status) + "</span></div>" +
+      videoHtml + noteHtml + promptHtml(j.prompt) + metaHtml + actionHtml + youtubeHtml +
+      "</div>";
+  }).join("");
+  pagination.innerHTML =
+    '<button type="button" class="page-btn" data-page="prev"' + (currentJobsPage === 1 ? " disabled" : "") + '>← Önceki</button>' +
+    '<span class="page-info">' + currentJobsPage + " / " + pageCount + '</span>' +
+    '<button type="button" class="page-btn" data-page="next"' + (currentJobsPage === pageCount ? " disabled" : "") + '>Sonraki →</button>';
+}
+
+document.getElementById("jobPagination").addEventListener("click", function (ev) {
+  var button = ev.target.closest(".page-btn");
+  if (!button || button.disabled) return;
+  currentJobsPage += button.getAttribute("data-page") === "next" ? 1 : -1;
+  renderJobs(latestJobs);
+  document.getElementById("queue").scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
+document.getElementById("queue").addEventListener("change", function (ev) {
+  if (!ev.target.matches(".job-category")) return;
+  var jobId = ev.target.getAttribute("data-job-id");
+  var selectedCat = ev.target.value;
+  fetch("/api/jobs/" + encodeURIComponent(jobId) + "/category", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ categoryId: selectedCat })
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    if (!d.ok) { alert(d.error || "Kategori güncellenemedi."); return; }
+    var job = latestJobs.find(function (j) { return j.id === jobId; });
+    if (job) job.categoryId = selectedCat || null;
+    lastJobsSnapshot = null;
+    poll();
+  }).catch(function () { alert("Bağlantı hatası oluştu."); });
+});
+
+document.getElementById("queue").addEventListener("click", function (ev) {
+  var button = ev.target.closest(".job-share");
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  button.textContent = "Paylaşılıyor...";
+  fetch("/api/jobs/" + encodeURIComponent(button.getAttribute("data-job-id")) + "/youtube", { method: "POST" })
+    .then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) { alert(d.error || "Paylaşım başlatılamadı."); button.disabled = false; button.textContent = "YouTube’da Paylaş"; return; }
+      lastJobsSnapshot = null;
+      poll();
+    }).catch(function () { alert("Bağlantı hatası oluştu."); button.disabled = false; button.textContent = "YouTube’da Paylaş"; });
+});
+
+var lastJobsSnapshot = null;
+var lastFinishedCount = 0;
+
+function poll() {
+  fetch("/api/jobs").then(function (r) { return r.json(); }).then(function (d) {
+    if (!d.ok) return;
+    var snapshot = JSON.stringify(d.jobs);
+    if (snapshot === lastJobsSnapshot) return; // degisiklik yok - video oynatimini bozma
+    lastJobsSnapshot = snapshot;
+    latestJobs = d.jobs;
+    var finishedCount = latestJobs.filter(function (job) { return !!job.finishedAt; }).length;
+    if (lastFinishedCount && finishedCount > lastFinishedCount) loadCredits();
+    lastFinishedCount = finishedCount;
+    renderJobs(latestJobs);
+  }).catch(function () {});
+}
+
+var SETTINGS_STORAGE_KEY = "geminiflow_settings";
+var AUTOMATION_STORAGE_KEY = "geminiflow_automation_category";
+
+function saveSettingsToStorage() {
+  try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(currentSettings())); } catch (e) {}
+}
+
+function saveAutomationCategory() {
+  var select = document.getElementById("automationCategorySelect");
+  if (!select) return;
+  try { localStorage.setItem(AUTOMATION_STORAGE_KEY, select.value); } catch (e) {}
+}
+
+function loadSettingsFromStorage() {
+  var saved = null;
+  try { saved = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || "null"); } catch (e) {}
+  if (!saved) return;
+  document.querySelectorAll(".seg").forEach(function (seg) {
+    var key = seg.getAttribute("data-key");
+    if (!saved[key]) return;
+    var target = seg.querySelector('button[data-val="' + saved[key] + '"]');
+    if (!target) return;
+    seg.querySelectorAll("button").forEach(function (b) { b.classList.remove("active"); });
+    target.classList.add("active");
+  });
+  if (saved.model) document.getElementById("modelSelect").value = saved.model;
+}
+
+document.querySelectorAll(".seg").forEach(function (seg) {
+  seg.addEventListener("click", function (ev) {
+    var btn = ev.target.closest("button");
+    if (!btn) return;
+    seg.querySelectorAll("button").forEach(function (b) { b.classList.remove("active"); });
+    btn.classList.add("active");
+    saveSettingsToStorage();
+  });
+});
+
+document.getElementById("modelSelect").addEventListener("change", saveSettingsToStorage);
+
+function currentSettings() {
+  var s = {};
+  document.querySelectorAll(".seg").forEach(function (seg) {
+    var active = seg.querySelector("button.active");
+    if (active) s[seg.getAttribute("data-key")] = active.getAttribute("data-val");
+  });
+  s.model = document.getElementById("modelSelect").value;
+  return s;
+}
+
+function submitGenerate(text, categoryId) {
+  if (!text) return Promise.resolve({ ok: false, error: "Prompt boş olamaz." });
+  var submitBtn = document.getElementById("submitBtn");
+  submitBtn.disabled = true;
+  var automationSelect = document.getElementById("automationCategorySelect");
+  var resolvedCategory = categoryId !== undefined ? categoryId : (automationSelect ? automationSelect.value : "");
+  return fetch("/api/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt: text, settings: currentSettings(), categoryId: resolvedCategory || undefined })
+  }).then(function (r) {
+    return r.json().then(function (body) { return { response: r, body: body }; });
+  }).then(function (result) {
+    if (!result.response.ok || !result.body.ok) {
+      throw new Error(result.body.error || "İstek oluşturulamadı.");
+    }
+    document.getElementById("promptInput").value = "";
+    poll();
+    return result.body;
+  }).catch(function (error) {
+    window.alert(error.message || "Bağlantı hatası oluştu.");
+    return { ok: false, error: error.message };
+  }).finally(function () {
+    submitBtn.disabled = false;
+  });
+}
+
+document.getElementById("composer").addEventListener("submit", function (ev) {
+  ev.preventDefault();
+  var input = document.getElementById("promptInput");
+  submitGenerate(input.value.trim());
+});
+
+function addPoolRow() {
+  var row = document.createElement("div");
+  row.className = "pool-row";
+  row.innerHTML =
+    '<button type="button" class="pool-img-btn" title="Görsel ekle">+</button>' +
+    '<input type="file" accept="image/png,image/jpeg,image/webp,image/gif">' +
+    '<div class="pool-fields">' +
+      '<input type="text" class="pool-input pool-category-input" placeholder="Kategori (örn. Otomobil)">' +
+      '<input type="text" class="pool-input pool-description-input" placeholder="Kısa açıklama">' +
+      '<input type="text" class="pool-input pool-prompt-input" placeholder="Prompt fikri…">' +
+    '</div>';
+  var imgBtn = row.querySelector(".pool-img-btn");
+  var fileInput = row.querySelector('input[type="file"]');
+  imgBtn.addEventListener("click", function () { fileInput.click(); });
+  fileInput.addEventListener("change", function () {
+    var file = fileInput.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () { imgBtn.innerHTML = '<img src="' + reader.result + '">'; };
+    reader.readAsDataURL(file);
+  });
+  document.getElementById("poolInputs").appendChild(row);
+  return row;
+}
+
+document.getElementById("addPoolRowBtn").addEventListener("click", function () {
+  addPoolRow().querySelector(".pool-category-input").focus();
+});
+
+for (var i = 0; i < 3; i++) addPoolRow();
+
+document.getElementById("savePoolBtn").addEventListener("click", function () {
+  var saveBtn = document.getElementById("savePoolBtn");
+  var rows = Array.from(document.querySelectorAll(".pool-row"));
+  var fd = new FormData();
+  var hasAny = false;
+  rows.forEach(function (row, idx) {
+    var text = row.querySelector(".pool-prompt-input").value.trim();
+    if (!text) return;
+    hasAny = true;
+    fd.append("text_" + idx, text);
+    fd.append("category_" + idx, row.querySelector(".pool-category-input").value.trim());
+    fd.append("description_" + idx, row.querySelector(".pool-description-input").value.trim());
+    var file = row.querySelector('input[type="file"]').files[0];
+    if (file) fd.append("image_" + idx, file);
+  });
+  if (!hasAny) { alert("Lütfen en az bir prompt metni girin."); return; }
+  saveBtn.disabled = true;
+  saveBtn.textContent = "Kaydediliyor...";
+  fetch("/api/pool", { method: "POST", body: fd })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d.ok) {
+        document.getElementById("poolInputs").innerHTML = "";
+        for (var i = 0; i < 3; i++) addPoolRow();
+        loadPool();
+        loadAutomationCategories(!document.getElementById("settingsPanel") || !document.getElementById("settingsPanel").hidden);
+      } else {
+        alert(d.error || "Havuza kaydedilemedi.");
+      }
+    })
+    .catch(function () { alert("Bağlantı hatası oluştu."); })
+    .finally(function () {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Havuza Kaydet";
+    });
+});
+
+var poolItems = [];
+var activePoolCategory = "Tümü";
+
+function poolCard(p) {
+  var category = p.category || "Genel";
+  var description = p.description || "";
+  var imageHtml = p.image ? '<img class="chip-thumb" src="/static/pool_images/' + encodeURIComponent(p.image) + '" alt="">' : '<span class="chip-thumb" aria-hidden="true"></span>';
+  return '<span class="pool-chip" data-id="' + escStr(p.id) + '" data-text="' + escStr(p.text) + '" data-category="' + escStr(category) + '" title="Promptu aç">' +
+    '<span class="chip-image">' + imageHtml +
+    '<button type="button" class="chip-del" data-id="' + escStr(p.id) + '" aria-label="Promptu sil">×</button></span>' +
+    '<span class="chip-name">' + escStr(category) + '</span>' +
+    (description ? '<span class="chip-description">' + escStr(description) + '</span>' : "") +
+    "</span>";
+}
+
+function renderPool(items) {
+  var list = document.getElementById("poolList");
+  var filters = document.getElementById("poolFilters");
+  var visible = items;
+  var categories = Array.from(new Set(visible.map(function (p) { return p.category || "Genel"; }))).sort();
+  if (activePoolCategory !== "Tümü" && categories.indexOf(activePoolCategory) === -1) activePoolCategory = "Tümü";
+  filters.innerHTML = ["Tümü"].concat(categories).map(function (category) {
+    return '<button type="button" class="pool-filter' + (category === activePoolCategory ? " active" : "") + '" data-category="' + escStr(category) + '">' + escStr(category) + '</button>';
+  }).join("");
+  var filtered = activePoolCategory === "Tümü" ? visible : visible.filter(function (p) { return (p.category || "Genel") === activePoolCategory; });
+  var grouped = {};
+  filtered.forEach(function (p) {
+    var category = p.category || "Genel";
+    if (!grouped[category]) grouped[category] = [];
+    grouped[category].push(p);
+  });
+  list.innerHTML = Object.keys(grouped).sort().map(function (category) {
+    return grouped[category].map(poolCard).join("");
+  }).join("");
+}
+
+function loadPool() {
+  fetch("/api/pool").then(function (r) { return r.json(); }).then(function (d) {
+    if (d.ok) { poolItems = d.items; renderPool(poolItems); }
+  }).catch(function () {});
+}
+
+document.getElementById("poolFilters").addEventListener("click", function (ev) {
+  var filter = ev.target.closest(".pool-filter");
+  if (!filter) return;
+  activePoolCategory = filter.getAttribute("data-category");
+  renderPool(poolItems);
+});
+
+document.getElementById("poolList").addEventListener("click", function (ev) {
+  var delBtn = ev.target.closest(".chip-del");
+  if (delBtn) {
+    fetch("/api/pool/" + encodeURIComponent(delBtn.getAttribute("data-id")), { method: "DELETE" })
+      .then(function () { loadPool(); });
+    return;
+  }
+  var chip = ev.target.closest(".pool-chip");
+  if (chip) openAiModal(chip.getAttribute("data-text"), chip.getAttribute("data-category") || "Genel");
+});
+
+loadPool();
+loadSettingsFromStorage();
+var creditsRetryCount = 0;
+function loadCredits() {
+  fetch("/api/credits").then(function (r) { return r.json(); }).then(function (d) {
+    var badge = document.getElementById("creditsBadge");
+    if (d.credits !== null && d.credits !== undefined) {
+      badge.textContent = d.credits.toLocaleString("tr-TR") + " kredi";
+      creditsRetryCount = 0;
+    } else if (d.loading) {
+      badge.textContent = "kredi okunuyor…";
+      creditsRetryCount += 1;
+      if (creditsRetryCount <= 15) setTimeout(loadCredits, 5000);
+      else badge.textContent = "kredi beklemede";
+    } else {
+      badge.textContent = "kredi alınamadı";
+      creditsRetryCount = 0;
+    }
+  }).catch(function () {
+    document.getElementById("creditsBadge").textContent = "kredi alınamadı";
+  });
+}
+loadCredits();
+setInterval(loadCredits, 300000);
+
+// --- AI destekli prompt asistani: havuzdaki fikri tiklayinca AI soru sorar, ---
+// --- cevaplar birikince nihai prompt'u uretip ana kutuya yazar. ---
+var FINAL_MARKER = "PROMPT_HAZIR:";
+var aiConversation = [];
+var aiBusy = false;
+
+var SUGGESTIONS_MARKER = "ÖNERİLER:";
+var PROMPT_HISTORY_KEY = "geminiflow_prompt_history";
+var PROMPT_HISTORY_MAX = 40;
+var currentCategory = "Genel";
+var sessionSuggestionHistory = [];
+var autoPilot = false;
+var autoPilotTurn = 0;
+var autoPilotMaxTurns = 4;
+var autoPilotUsedAnswers = [];
+var finalRetryCount = 0;
+
+function getCategoryHistory(category) {
+  try {
+    var all = JSON.parse(localStorage.getItem(PROMPT_HISTORY_KEY) || "{}");
+    return all[category] || [];
+  } catch (e) { return []; }
+}
+
+function pushCategoryHistory(category, finalPromptText) {
+  try {
+    var all = JSON.parse(localStorage.getItem(PROMPT_HISTORY_KEY) || "{}");
+    var list = all[category] || [];
+    list.push(finalPromptText);
+    if (list.length > PROMPT_HISTORY_MAX) list = list.slice(list.length - PROMPT_HISTORY_MAX); // kayan pencere: en eskiyi at
+    all[category] = list;
+    localStorage.setItem(PROMPT_HISTORY_KEY, JSON.stringify(all));
+  } catch (e) {}
+}
+
+function aiSystemPrompt(idea, category) {
+  var history = getCategoryHistory(category);
+  var diversitySeed = crypto.getRandomValues(new Uint32Array(1))[0];
+  var historyNote = "";
+  if (history.length) {
+    var recentHistory = history.slice(-10).map(function (h) { return String(h).slice(0, 700); });
+    historyNote = "\n\nBu kategoride (\"" + category + "\") daha önce şu final promptlar üretildi. Bunların sahnesini, kamera dilini, aksiyonunu, atmosferini veya temel kompozisyonunu TEKRAR ETME:\n" +
+      recentHistory.map(function (h, i) { return (i + 1) + ") " + h; }).join("\n");
+  }
+  return "Kullanıcı bir video prompt fikri girdi: \"" + idea + "\". Çeşitlilik tohumu: " + diversitySeed + ". Görevin, bu fikri net, " +
+    "detaylı, sinematik bir video üretim prompt'una dönüştürmek için gereken bilgileri toplamaktır. Her yeni oturumda özgün yaklaşım seç. " +
+    "Kullanıcıya TEK SEFERDE SADECE BİR soru sor (asla birden fazla soru sorma, numaralandırma yapma). " +
+    "Soruları sırayla farklı eksenlerden seç: dünya/ortam, özne ve aksiyon, görsel sanat yönü, kamera/lens/hareket, ışık/renk, duygu/hikâye. " +
+    "Aynı soru kalıbını veya aynı popüler seçenekleri tekrarlama. Her sorudan sonra TAM 6 kısa seçenek üret. Altı seçeneğin her biri birbirinden belirgin biçimde farklı olsun: " +
+    "en az biri gerçekçi, biri deneysel, biri dramatik, biri minimal, biri sürprizli, biri premium/reklam estetiğinde olsun. " +
+    "Seçenekler birbirinin eş anlamlısı olmasın; farklı mekan, dönem, kamera, aksiyon veya estetik yön sunsun. Oneri formatı: " +
+    "soru metninden sonra YENİ SATIRDA \"" + SUGGESTIONS_MARKER + " öneri1 | öneri2 | öneri3 | öneri4 | öneri5 | öneri6\" seklinde, " +
+    "onerileri yalnız \" | \" ile ayirarak tek satirda ver. Genelde 2-4 soru yeterlidir. " +
+    "Yeterli bilgiyi topladığında, öneri satırı OLMADAN, başka hiçbir açıklama eklemeden, " +
+    "TEK satırda şu formatta cevap ver: \"" + FINAL_MARKER + " <nihai video prompt>\". " +
+    "NİHAİ PROMPT METNİ MUTLAKA İNGİLİZCE olmalı (video üretim modeli İngilizce prompt ile daha iyi çalışıyor), " +
+    "tek paragraf, sinematik, detaylı - sorular ve öneriler Türkçe kalsın ama bu son prompt satırı İngilizce yaz. " +
+    "Bu formatı SADECE gerçekten bitirdiğinde kullan, aksi halde sadece bir sonraki soruyu (+ önerileri) Türkçe sor." +
+    historyNote;
+}
+
+function addAiMsg(role, text) {
+  var t = document.getElementById("aiTranscript");
+  var div = document.createElement("div");
+  div.className = "ai-msg " + role;
+  div.textContent = text;
+  t.appendChild(div);
+  t.scrollTop = t.scrollHeight;
+  return div;
+}
+
+function updatePilotToast(state, title, detail) {
+  var toast = document.getElementById("pilotToast");
+  toast.hidden = false;
+  toast.className = "pilot-toast" + (state ? " " + state : "");
+  document.getElementById("pilotToastTitle").textContent = title;
+  document.getElementById("pilotToastDetail").textContent = detail;
+}
+
+function openAiModal(ideaText, category) {
+  currentCategory = category || "Genel";
+  sessionSuggestionHistory = [];
+  autoPilot = true;
+  autoPilotTurn = autoPilotMaxTurns;
+  autoPilotUsedAnswers = [];
+  finalRetryCount = 0;
+  var directSeed = Array.from(crypto.getRandomValues(new Uint32Array(4))).join("-");
+  aiConversation = [{ role: "system", content: aiSystemPrompt(ideaText, currentCategory) + "\n\nOTOMATİK PİLOT AKTİF. Çeşitlilik anahtarı: " + directSeed + ". Dört farklı yaratıcı soruyu kendi içinde oluştur, her biri için altı uç seçenek düşün ve kriptografik çeşitlilik anahtarını kullanarak her sorudan farklı bir seçeneği kendin seç. Bu iç süreci kullanıcıya gösterme ve soru sorma. Geçmiş promptlardan belirgin biçimde farklı, uygulanabilir, tek paragraflık İngilizce video promptunu doğrudan ve yalnız PROMPT_HAZIR: ile döndür." }];
+  document.getElementById("aiTranscript").innerHTML = "";
+  document.getElementById("aiAnswerForm").hidden = true;
+  document.getElementById("aiModal").hidden = true;
+  document.getElementById("aiAnswerInput").value = "";
+  addAiMsg("pending", "Otomatik pilot özgün video fikri hazırlıyor…");
+  updatePilotToast("", "İşleniyor", currentCategory + " promptu hazırlanıyor · detayı görmek için tıklayın");
+  askAi();
+}
+
+function askAi() {
+  aiBusy = true;
+  document.getElementById("aiAnswerSend").disabled = true;
+  var pending = addAiMsg("pending", "düşünüyor…");
+  fetch("/api/ai/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages: aiConversation })
+  }).then(function (r) {
+    return r.text().then(function (text) {
+      var body;
+      try { body = JSON.parse(text); } catch (e) { throw new Error("Sunucudan geçersiz AI yanıtı alındı."); }
+      return { response: r, body: body };
+    });
+  }).then(function (result) {
+    var d = result.body;
+    if (!result.response.ok) throw new Error(d.error || "AI servisi isteği başarısız.");
+    pending.remove();
+    aiBusy = false;
+    document.getElementById("aiAnswerSend").disabled = false;
+    if (!d.ok) { addAiMsg("ai", "Hata: " + d.error); return; }
+    var reply = d.reply || "";
+    aiConversation.push({ role: "assistant", content: reply });
+    var idx = reply.indexOf(FINAL_MARKER);
+    if (idx !== -1) {
+      var finalPrompt = reply.slice(idx + FINAL_MARKER.length).trim();
+      pushCategoryHistory(currentCategory, finalPrompt);
+      addAiMsg("final", finalPrompt + "\n\n→ Video oluşturuluyor…");
+      document.getElementById("promptInput").value = finalPrompt;
+      document.getElementById("aiAnswerForm").hidden = true;
+      var categoryMatch = automationCategories.find(function (c) { return c.name === currentCategory && c.connected; });
+      submitGenerate(finalPrompt, categoryMatch ? categoryMatch.id : "").then(function (result) {
+        if (result && result.ok) {
+          addAiMsg("pending", "Kuyruğa eklendi. Video hazır olduğunda listede görünecek.");
+          updatePilotToast("success", "Kuyruğa eklendi", currentCategory + " videosu üretim sırasına alındı");
+          setTimeout(function () {
+            document.getElementById("aiModal").hidden = true;
+            document.getElementById("pilotToast").hidden = true;
+          }, 5000);
+        } else {
+          autoPilot = false;
+          var queueError = (result && result.error) || "Bilinmeyen hata";
+          addAiMsg("ai", "Video kuyruğa eklenemedi: " + queueError);
+          updatePilotToast("error", "İşlem başarısız", queueError + " · ayrıntı için tıklayın");
+        }
+      });
+    } else if (autoPilot && autoPilotTurn >= autoPilotMaxTurns) {
+      if (finalRetryCount >= 2) {
+        autoPilot = false;
+        addAiMsg("ai", "Final prompt üretilemedi; tekrar deneyin.");
+        return;
+      }
+      finalRetryCount += 1;
+      aiConversation.push({ role: "user", content: "Yeterli bilgi toplandı. Başka soru sorma. Şimdi yalnız PROMPT_HAZIR: ile başlayan özgün İngilizce final video promptunu üret." });
+      askAi();
+    } else {
+      addAiQuestionWithSuggestions(reply);
+    }
+  }).catch(function (error) {
+    pending.remove();
+    aiBusy = false;
+    autoPilot = false;
+    document.getElementById("aiAnswerSend").disabled = false;
+    var aiError = error.message || "Bağlantı hatası, tekrar dene.";
+    addAiMsg("ai", aiError);
+    updatePilotToast("error", "Prompt hazırlanamadı", aiError + " · ayrıntı için tıklayın");
+  });
+}
+
+function addAiQuestionWithSuggestions(reply) {
+  var sIdx = reply.indexOf(SUGGESTIONS_MARKER);
+  var questionText = sIdx === -1 ? reply : reply.slice(0, sIdx).trim();
+  addAiMsg("ai", questionText);
+  if (sIdx === -1) return;
+  var seen = {};
+  var options = reply.slice(sIdx + SUGGESTIONS_MARKER.length).split("|")
+    .map(function (s) { return s.trim().replace(/^\d+[.)]\s*/, ""); })
+    .filter(function (option) {
+      var key = option.toLocaleLowerCase("tr-TR");
+      if (!option || seen[key]) return false;
+      seen[key] = true;
+      return true;
+    }).slice(0, 6);
+  if (!options.length) return;
+  sessionSuggestionHistory = sessionSuggestionHistory.concat(options).slice(-30);
+  var t = document.getElementById("aiTranscript");
+  var wrap = document.createElement("div");
+  wrap.className = "ai-suggestions";
+  wrap.innerHTML = options.map(function (o, index) {
+    return '<button type="button" class="suggestion-chip" data-index="' + (index + 1) + '">' + escStr(o) + "</button>";
+  }).join("");
+  t.appendChild(wrap);
+  t.scrollTop = t.scrollHeight;
+  if (autoPilot) {
+    var available = options.filter(function (option) { return autoPilotUsedAnswers.indexOf(option) === -1; });
+    if (!available.length) available = options;
+    var randomBytes = crypto.getRandomValues(new Uint32Array(1));
+    var selected = available[randomBytes[0] % available.length];
+    autoPilotUsedAnswers.push(selected);
+    autoPilotTurn += 1;
+    Array.from(wrap.querySelectorAll(".suggestion-chip")).forEach(function (button) {
+      if (button.textContent === selected) button.classList.add("selected");
+    });
+    setTimeout(function () { sendAnswer(selected); }, 350);
+  }
+}
+
+function sendAnswer(text) {
+  if (aiBusy || !text) return;
+  var suggestions = document.querySelectorAll(".ai-suggestions");
+  suggestions.forEach(function (s) { s.remove(); });
+  addAiMsg("user", text);
+  var noRepeatRule = sessionSuggestionHistory.length ? " Daha önce sunulan şu seçenekleri veya yakınlarını tekrar kullanma: " + sessionSuggestionHistory.join("; ") : "";
+  aiConversation.push({ role: "user", content: text + noRepeatRule });
+  askAi();
+}
+
+document.getElementById("aiTranscript").addEventListener("click", function (ev) {
+  var chip = ev.target.closest(".suggestion-chip");
+  if (chip) sendAnswer(chip.textContent);
+});
+
+document.getElementById("aiAnswerForm").addEventListener("submit", function (ev) {
+  ev.preventDefault();
+  var input = document.getElementById("aiAnswerInput");
+  var text = input.value.trim();
+  input.value = "";
+  sendAnswer(text);
+});
+
+document.getElementById("pilotToast").addEventListener("click", function () {
+  document.getElementById("aiModal").hidden = false;
+});
+document.getElementById("aiModalClose").addEventListener("click", function () {
+  document.getElementById("aiModal").hidden = true;
+});
+
+var settingsToggle = document.getElementById("settingsToggle");
+if (settingsToggle) {
+  settingsToggle.addEventListener("click", function () {
+    var panel = document.getElementById("settingsPanel");
+    panel.hidden = !panel.hidden;
+    if (!panel.hidden) { loadUsers(); loadAutomationCategories(true); }
+  });
+  document.getElementById("addUserBtn").addEventListener("click", function () {
+    var input = document.getElementById("newUserEmail");
+    var email = input.value.trim();
+    if (!email) return;
+    fetch("/api/settings/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email }) })
+      .then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.ok) return window.alert(d.error || "Kullanıcı eklenemedi.");
+        input.value = "";
+        loadUsers();
+      });
+  });
+  document.getElementById("userList").addEventListener("click", function (ev) {
+    var button = ev.target.closest("button[data-email]");
+    if (!button) return;
+    fetch("/api/settings/users/" + encodeURIComponent(button.getAttribute("data-email")), { method: "DELETE" })
+      .then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.ok) return window.alert(d.error || "Kullanıcı silinemedi.");
+        loadUsers();
+      });
+  });
+}
+function loadUsers() {
+  fetch("/api/settings/users").then(function (r) { return r.json(); }).then(function (d) {
+    if (!d.ok) return;
+    document.getElementById("userList").innerHTML = d.users.map(function (email) {
+      var removable = email !== {{ current_user | tojson }};
+      return '<div class="user-item"><span>' + escStr(email) + '</span>' + (removable ? '<button type="button" class="account-btn" data-email="' + escStr(email) + '">Sil</button>' : '<span>Yönetici</span>') + '</div>';
+    }).join("");
+  });
+}
+
+var IS_ADMIN = {{ is_admin | tojson }};
+var automationCategories = [];
+
+function fillAutomationSelect() {
+  var select = document.getElementById("automationCategorySelect");
+  if (!select) return;
+  var current = select.value;
+  var options = ['<option value="">Otomatik paylaşma (Kapalı)</option>'].concat(automationCategories.filter(function (c) { return c.connected; }).map(function (c) {
+    var label = escStr(c.name) + " → " + escStr(c.channelName || "Kanal") + (c.enabled ? " (Otomatik Aktif)" : " (Manuel)");
+    return '<option value="' + escStr(c.id) + '">' + label + "</option>";
+  }));
+  select.innerHTML = options.join("");
+  var saved = "";
+  try { saved = localStorage.getItem(AUTOMATION_STORAGE_KEY) || ""; } catch (e) {}
+  var preferred = current || saved;
+  if (automationCategories.some(function (c) { return c.id === preferred && c.connected; })) {
+    select.value = preferred;
+  } else {
+    var enabled = automationCategories.filter(function (c) { return c.connected && c.enabled; });
+    if (enabled.length === 1) select.value = enabled[0].id;
+  }
+  saveAutomationCategory();
+}
+
+document.getElementById("automationCategorySelect").addEventListener("change", saveAutomationCategory);
+
+function loadAutomationCategories(forManagement) {
+  fetch("/api/automation/categories").then(function (r) { return r.json(); }).then(function (d) {
+    if (!d.ok) return;
+    automationCategories = d.categories;
+    fillAutomationSelect();
+    renderJobs(latestJobs);
+    if (forManagement && IS_ADMIN) renderCategoryManagement();
+  }).catch(function () {});
+}
+
+function categoryCard(c) {
+  var statusClass = c.connected ? "connected" : "disconnected";
+  var statusText = c.connected ? "Bağlı: " + escStr(c.channelName || "") : "Kanal bağlı değil";
+  var meta = [];
+  if (c.publishedCount) meta.push(c.publishedCount + " video paylaşıldı");
+  if (c.lastPublishedAt) meta.push("Son: " + escStr(formatDateTime(c.lastPublishedAt)));
+  var metaHtml = meta.length ? '<div class="category-meta">' + meta.join(" · ") + "</div>" : "";
+  var errorHtml = c.lastError ? '<div class="category-error">' + escStr(c.lastError) + "</div>" : "";
+  return '<div class="category-card" data-id="' + escStr(c.id) + '">' +
+    '<div class="category-card-top"><strong>' + escStr(c.name) + '</strong><span class="category-status ' + statusClass + '">' + statusText + "</span></div>" +
+    '<div class="category-actions">' +
+      '<label class="toggle-switch"><input type="checkbox" class="category-enabled" ' + (c.enabled ? "checked" : "") + (c.connected ? "" : " disabled") + "> Aktif</label>" +
+      '<select class="category-privacy"><option value="public"' + (c.privacy === "public" ? " selected" : "") + '>Herkese açık</option><option value="unlisted"' + (c.privacy === "unlisted" ? " selected" : "") + '>Bağlantıyla</option><option value="private"' + (c.privacy === "private" ? " selected" : "") + '>Gizli</option></select>' +
+      '<button type="button" class="account-btn category-connect-btn">' + (c.connected ? "Yeniden bağla" : "Kanal bağla") + "</button>" +
+      (c.connected ? '<button type="button" class="account-btn category-sync-btn">Kanal adını yenile</button>' : "") +
+      '<button type="button" class="account-btn category-delete-btn">Sil</button>' +
+    "</div>" + metaHtml + errorHtml +
+  "</div>";
+}
+
+function renderCategoryManagement() {
+  document.getElementById("categoryList").innerHTML = automationCategories.map(categoryCard).join("") || '<p class="hint">Henüz kategori yok.</p>';
+}
+
+var categoryConnectPending = null;
+
+document.getElementById("addCategoryBtn") && document.getElementById("addCategoryBtn").addEventListener("click", function () {
+  var input = document.getElementById("newCategoryName");
+  var name = input.value.trim();
+  if (!name) return;
+  fetch("/api/automation/categories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name }) })
+    .then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) return window.alert(d.error || "Kategori eklenemedi.");
+      input.value = "";
+      loadAutomationCategories(true);
+    });
+});
+
+var categoryListEl = document.getElementById("categoryList");
+if (categoryListEl) {
+  categoryListEl.addEventListener("click", function (ev) {
+    var card = ev.target.closest(".category-card");
+    if (!card) return;
+    var slug = card.getAttribute("data-id");
+    if (ev.target.closest(".category-sync-btn")) {
+      var syncBtn = ev.target.closest(".category-sync-btn");
+      syncBtn.disabled = true;
+      syncBtn.textContent = "Yenileniyor...";
+      fetch("/api/automation/categories/" + encodeURIComponent(slug) + "/sync-channel", { method: "POST" })
+        .then(function (r) { return r.json(); }).then(function (d) {
+          if (!d.ok) throw new Error(d.error || "Kanal adı okunamadı.");
+          loadAutomationCategories(true);
+        }).catch(function (error) {
+          window.alert(error.message);
+          syncBtn.disabled = false;
+          syncBtn.textContent = "Kanal adını yenile";
+        });
+      return;
+    }
+    if (ev.target.closest(".category-delete-btn")) {
+      if (!window.confirm("Bu kategori silinsin mi?")) return;
+      fetch("/api/automation/categories/" + encodeURIComponent(slug), { method: "DELETE" })
+        .then(function (r) { return r.json(); }).then(function (d) {
+          if (!d.ok) return window.alert(d.error || "Silinemedi.");
+          loadAutomationCategories(true);
+        });
+      return;
+    }
+    if (ev.target.closest(".category-connect-btn")) {
+      var connectBtn = ev.target.closest(".category-connect-btn");
+      categoryConnectPending = slug;
+      connectBtn.disabled = true;
+      connectBtn.textContent = "Chrome açılıyor...";
+      fetch("/api/automation/categories/" + encodeURIComponent(slug) + "/connect", { method: "POST" })
+        .then(function (r) { return r.json(); }).then(function (d) {
+          if (!d.ok) throw new Error(d.error || "Tarayıcı açılamadı.");
+          connectBtn.disabled = false;
+          connectBtn.textContent = "Girişi tamamladım";
+          connectBtn.classList.remove("category-connect-btn");
+          connectBtn.classList.add("category-sync-btn");
+          window.alert("Chrome'da YouTube girişini tamamlayın. Pencereyi kapattıktan sonra 'Girişi tamamladım' düğmesine basın.");
+        }).catch(function (error) {
+          window.alert(error.message);
+          connectBtn.disabled = false;
+          connectBtn.textContent = "Kanal bağla";
+        });
+    }
+  });
+  categoryListEl.addEventListener("change", function (ev) {
+    var card = ev.target.closest(".category-card");
+    if (!card) return;
+    var slug = card.getAttribute("data-id");
+    var payload = {};
+    if (ev.target.classList.contains("category-enabled")) payload.enabled = ev.target.checked;
+    if (ev.target.classList.contains("category-privacy")) payload.privacy = ev.target.value;
+    if (!Object.keys(payload).length) return;
+    fetch("/api/automation/categories/" + encodeURIComponent(slug), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+      .then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.ok) { window.alert(d.error || "Güncellenemedi."); loadAutomationCategories(true); return; }
+        loadAutomationCategories(true);
+      });
+  });
+}
+
+loadAutomationCategories(false);
+
+var initialJobs = {{ jobs | tojson }};
+latestJobs = initialJobs;
+lastFinishedCount = initialJobs.filter(function (job) { return !!job.finishedAt; }).length;
+lastJobsSnapshot = JSON.stringify(initialJobs);
+renderJobs(latestJobs);
+setInterval(poll, 4000);
+</script>
+</body>
+</html>

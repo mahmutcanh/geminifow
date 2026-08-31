@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Geminiflow Giriş</title>
+<style>
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: #141210; color: #f1ece1; }
+main { width: min(390px, calc(100% - 32px)); padding: 28px; border: 1px solid #38332a; border-radius: 16px; background: #1d1a16; box-shadow: 0 20px 60px #0008; }
+h1 { margin: 0 0 8px; font-size: 26px; }
+p { color: #b7ac99; line-height: 1.5; }
+a, button { width: 100%; box-sizing: border-box; display: block; border: 0; border-radius: 999px; padding: 12px 18px; background: #4cd6cb; color: #141210; text-align: center; text-decoration: none; font-weight: 700; cursor: pointer; }
+form { display: grid; gap: 10px; margin-top: 20px; }
+input { width: 100%; box-sizing: border-box; border: 1px solid #494238; border-radius: 9px; padding: 11px 12px; background: #28241e; color: #f1ece1; }
+.warning { color: #ff8952; }
+</style>
+</head>
+<body>
+<main>
+<h1>Geminiflow</h1>
+<p>Panele erişmek için izinli Google hesabınızla giriş yapın.</p>
+{% if oauth_error %}<p class="warning">{{ oauth_error }}</p>{% endif %}
+{% if oauth_ready %}
+<a href="{{ url_for('google_login') }}">Google ile giriş yap</a>
+{% else %}
+<p class="warning">Google OAuth henüz yapılandırılmadı.</p>
+{% endif %}
+{% if setup_allowed %}
+<form method="post" action="{{ url_for('initial_setup') }}">
+<input type="email" name="email" placeholder="İlk yönetici Google e-postası" required>
+<input type="password" name="setup_token" placeholder="Kurulum anahtarı" required>
+<button type="submit">Yönetici oluştur</button>
+</form>
+{% endif %}
+</main>
+</body>
+</html>
