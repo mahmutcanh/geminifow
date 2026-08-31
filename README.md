@@ -34,25 +34,45 @@ Geminiflow; Google Flow AI altyapısını kullanarak otomatik video üreten, ür
 
 ---
 
-## 🛠️ Kurulum Adımları
+## 🛠️ Başka Bilgisayara Sıfırdan Kurulum Adımları
 
-### 1. Gereksinimler
-- Python 3.10+
-- Google Chrome (Sistemde kurulu olmalıdır)
-- Git
+### 1. Ön Gereksinimler
+- **Python 3.10+** (Kurulumda *Add Python to PATH* seçeneğini işaretleyin)
+- **Google Chrome** (Bilgisayarda kurulu olmalıdır)
+- **Git**
 
-### 2. Bağımlılıkların Yüklenmesi
+### 2. Repoyu İndirin
+```bash
+git clone https://github.com/mahmutcanh/geminifow.git
+cd geminifow
+```
+
+### 3. Kütüphaneleri ve Playwright'ı Yükleyin
 ```bash
 pip install -r requirements.txt
 playwright install chromium
 ```
 
-### 3. Uygulamanın Başlatılması
-```bash
-# Windows Başlatma Komutu
-python webpanel/app.py
-```
-Panel varsayılan olarak `http://localhost:5050` (veya konfigüre edilen port) üzerinden erişilebilir.
+### 4. İlk Kez Google (Flow) Hesabına Giriş Yapın
+Video üretecek Google hesabınızı bağlamak için:
+- `2_Google_Hesabina_Giris.bat` dosyasını çalıştırın  
+  *(veya terminalde: `python flow_bot/login.py`)*
+- Açılan Chrome penceresinde Google (labs.google/flow) hesabınıza giriş yapın.
+- Flow arayüzünü gördükten sonra Chrome penceresini kapatabilirsiniz.
+
+### 5. Web Paneli Başlatın
+- `1_Webpanel_Baslat.bat` dosyasını çalıştırın  
+  *(veya terminalde: `python webpanel/app.py`)*
+- Tarayıcınızdan `http://localhost:5050` adresine girin.
+
+### 6. YouTube Kanalını Bağlayın
+- Web panelinde **Otomasyon** sekmesine geçin.
+- Kanalınıza uygun bir kategori adı yazıp ekleyin.
+- **Kanal Bağla** butonuna basın.
+- Açılan Chrome penceresinde ilgili YouTube kanalına giriş yapın ve pencereyi kapatın.
+- Panelde **Girişi tamamladım** butonuna basın.
+
+Artık video oluşturduğunuzda sistem otomatik olarak arka planda videoyu üretip bağlı kanala Shorts taslağı olarak yükleyecektir.
 
 ---
 
@@ -67,16 +87,14 @@ Panel varsayılan olarak `http://localhost:5050` (veya konfigüre edilen port) �
 
 ## 🔄 Deploy ve Güncelleme Adımları
 
-Yeni bir geliştirme veya değişiklik yaptıktan sonra repoyu güncellemek için:
-
+Yeni bir geliştirme yaptıktan sonra repoyu güncellemek için:
 ```bash
 git add .
 git commit -m "feat: güncelleme açıklaması"
 git push origin main
 ```
 
-Sunucu tarafında güncellemeleri çekmek için:
+Başka bir bilgisayarda/sunucuda güncellemeleri çekmek için:
 ```bash
 git pull origin main
-python -m py_compile webpanel/app.py
 ```
