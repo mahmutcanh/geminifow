@@ -152,6 +152,13 @@
   .pilot-toast-copy { min-width: 0; display: grid; gap: 2px; }
   .pilot-toast-copy strong { font-size: 13px; }
   .pilot-toast-copy span { overflow: hidden; color: var(--text-dim); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+  .youtube-queue-toast[hidden] { display: none; }
+  .youtube-queue-toast { position: fixed; z-index: 89; right: 20px; bottom: 20px; width: min(360px, calc(100vw - 40px)); border: 1px solid var(--border); border-radius: 14px; padding: 12px; background: var(--surface); box-shadow: 0 16px 42px rgba(0,0,0,.22); display: grid; gap: 9px; }
+  .youtube-queue-head { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+  .youtube-queue-item { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+  .youtube-queue-item strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+  .youtube-queue-item span { color: var(--text-dim); font-size: 11px; }
+  .youtube-cancel { grid-row: 1 / 3; grid-column: 2; align-self: center; border: 1px solid var(--danger); border-radius: 8px; background: transparent; color: var(--danger); padding: 5px 8px; cursor: pointer; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .ai-answer-row { display: flex; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--border); }
   .ai-answer-row input { flex: 1; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text); font-family: inherit; font-size: 14px; padding: 9px 12px; }
@@ -265,6 +272,11 @@
   <span class="pilot-toast-copy"><strong id="pilotToastTitle">İşleniyor</strong><span id="pilotToastDetail">Prompt asistanı arka planda çalışıyor</span></span>
 </button>
 
+<div class="youtube-queue-toast" id="youtubeQueueToast" hidden aria-live="polite">
+  <div class="youtube-queue-head"><strong>YouTube İşlemleri</strong><span id="youtubeQueueCount"></span></div>
+  <div id="youtubeQueueItems"></div>
+</div>
+
 <div id="aiModal" class="ai-modal-overlay" hidden>
   <div class="ai-modal">
     <div class="ai-modal-head">
@@ -362,8 +374,12 @@ function renderJobs(jobs) {
       youtubeHtml = '<p class="meta-settings">▶ YouTube Shorts: ' + (j.youtubeUrl ? '<a href="' + escStr(j.youtubeUrl) + '" target="_blank" rel="noopener">yayında</a>' : "yayında") + "</p>";
     } else if (j.youtubeStatus === "taslak") {
       youtubeHtml = '<p class="meta-settings">YouTube taslağı hazır · AI başlık, etiket ve kapak ayarlandı.</p>';
+    } else if (j.youtubeStatus === "sırada") {
+      youtubeHtml = '<p class="meta-settings">YouTube sırasında · ' + (j.youtubeQueuePosition || "-") + '. sıra</p>';
     } else if (j.youtubeStatus === "paylaşılıyor") {
-      youtubeHtml = '<p class="meta-settings">YouTube’a paylaşılıyor...</p>';
+      youtubeHtml = '<p class="meta-settings">YouTube Shorts taslağı yükleniyor...</p>';
+    } else if (j.youtubeStatus === "iptal") {
+      youtubeHtml = '<p class="meta-settings">YouTube paylaşımı iptal edildi.</p>';
     } else if (j.youtubeStatus === "hata") {
       youtubeHtml = '<p class="note">YouTube paylaşımı başarısız: ' + escStr(j.youtubeError || "") + "</p>";
     }
@@ -372,9 +388,9 @@ function renderJobs(jobs) {
       var categoryOptions = ['<option value="">Kategori seç</option>'].concat(automationCategories.filter(function (c) { return c.connected; }).map(function (c) {
         return '<option value="' + escStr(c.id) + '"' + (j.categoryId === c.id ? ' selected' : '') + '>' + escStr(c.name) + '</option>';
       })).join("");
-      var shareDisabled = !j.categoryId || j.youtubeStatus === "paylaşılıyor" || j.youtubeStatus === "paylaşıldı" || j.youtubeStatus === "taslak";
+      var shareDisabled = !j.categoryId || j.youtubeStatus === "sırada" || j.youtubeStatus === "paylaşılıyor" || j.youtubeStatus === "paylaşıldı" || j.youtubeStatus === "taslak";
       actionHtml = '<div class="job-youtube-actions"><select class="job-category" data-job-id="' + escStr(j.id) + '">' + categoryOptions + '</select>' +
-        '<button type="button" class="job-share" data-job-id="' + escStr(j.id) + '"' + (shareDisabled ? ' disabled' : '') + '>YouTube’da Paylaş</button></div>';
+        '<button type="button" class="job-share" data-job-id="' + escStr(j.id) + '"' + (shareDisabled ? ' disabled' : '') + '>Shorts Taslağına Yükle</button></div>';
     }
     return '<div class="job">' +
       '<div class="job-top"><span class="pill ' + escStr(j.status) + '">' + escStr(j.status) + "</span></div>" +
@@ -416,17 +432,49 @@ document.getElementById("queue").addEventListener("click", function (ev) {
   var button = ev.target.closest(".job-share");
   if (!button || button.disabled) return;
   button.disabled = true;
-  button.textContent = "Paylaşılıyor...";
+  button.textContent = "Taslağa yükleniyor...";
   fetch("/api/jobs/" + encodeURIComponent(button.getAttribute("data-job-id")) + "/youtube", { method: "POST" })
     .then(function (r) { return r.json(); }).then(function (d) {
-      if (!d.ok) { alert(d.error || "Paylaşım başlatılamadı."); button.disabled = false; button.textContent = "YouTube’da Paylaş"; return; }
+      if (!d.ok) { alert(d.error || "Taslak yüklemesi başlatılamadı."); button.disabled = false; button.textContent = "Shorts Taslağına Yükle"; return; }
       lastJobsSnapshot = null;
       poll();
-    }).catch(function () { alert("Bağlantı hatası oluştu."); button.disabled = false; button.textContent = "YouTube’da Paylaş"; });
+    }).catch(function () { alert("Bağlantı hatası oluştu."); button.disabled = false; button.textContent = "Shorts Taslağına Yükle"; });
 });
 
 var lastJobsSnapshot = null;
 var lastFinishedCount = 0;
+
+function renderYoutubeQueue() {
+  var toast = document.getElementById("youtubeQueueToast");
+  var itemsEl = document.getElementById("youtubeQueueItems");
+  var active = latestJobs.filter(function (job) { return job.youtubeStatus === "sırada" || job.youtubeStatus === "paylaşılıyor"; });
+  if (!active.length) { toast.hidden = true; itemsEl.innerHTML = ""; return; }
+  active.sort(function (a, b) {
+    if (a.youtubeStatus === "paylaşılıyor") return -1;
+    if (b.youtubeStatus === "paylaşılıyor") return 1;
+    return (a.youtubeQueuePosition || 999) - (b.youtubeQueuePosition || 999);
+  });
+  document.getElementById("youtubeQueueCount").textContent = active.length + " işlem";
+  itemsEl.innerHTML = active.map(function (job) {
+    var title = (job.youtubeMetadata && job.youtubeMetadata.title) || job.prompt || "YouTube videosu";
+    var status = job.youtubeStatus === "paylaşılıyor" ? "Yükleniyor" : (job.youtubeQueuePosition || "-") + ". sırada";
+    var cancel = job.youtubeStatus === "sırada" ? '<button type="button" class="youtube-cancel" data-job-id="' + escStr(job.id) + '">İptal</button>' : "";
+    return '<div class="youtube-queue-item"><strong>' + escStr(title) + '</strong><span>' + status + '</span>' + cancel + '</div>';
+  }).join("");
+  toast.hidden = false;
+}
+
+document.getElementById("youtubeQueueToast").addEventListener("click", function (ev) {
+  var button = ev.target.closest(".youtube-cancel");
+  if (!button) return;
+  button.disabled = true;
+  fetch("/api/jobs/" + encodeURIComponent(button.getAttribute("data-job-id")) + "/youtube/cancel", { method: "POST" })
+    .then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) alert(d.error || "İşlem iptal edilemedi.");
+      lastJobsSnapshot = null;
+      poll();
+    }).catch(function () { alert("Bağlantı hatası oluştu."); button.disabled = false; });
+});
 
 function poll() {
   fetch("/api/jobs").then(function (r) { return r.json(); }).then(function (d) {
@@ -439,6 +487,7 @@ function poll() {
     if (lastFinishedCount && finishedCount > lastFinishedCount) loadCredits();
     lastFinishedCount = finishedCount;
     renderJobs(latestJobs);
+    renderYoutubeQueue();
   }).catch(function () {});
 }
 
@@ -786,7 +835,11 @@ function askAi() {
   }).then(function (r) {
     return r.text().then(function (text) {
       var body;
-      try { body = JSON.parse(text); } catch (e) { throw new Error("Sunucudan geçersiz AI yanıtı alındı."); }
+      try { body = JSON.parse(text); } catch (e) {
+        if (r.status === 502 || r.status === 504) throw new Error("AI servisi zaman aşımına uğradı. Tekrar deneyin.");
+        if (r.status === 401) throw new Error("Oturum süresi doldu. Sayfayı yenileyip tekrar giriş yapın.");
+        throw new Error("Sunucu geçici olarak geçersiz yanıt verdi (HTTP " + r.status + "). Tekrar deneyin.");
+      }
       return { response: r, body: body };
     });
   }).then(function (result) {
@@ -1010,8 +1063,6 @@ function renderCategoryManagement() {
   document.getElementById("categoryList").innerHTML = automationCategories.map(categoryCard).join("") || '<p class="hint">Henüz kategori yok.</p>';
 }
 
-var categoryConnectPending = null;
-
 document.getElementById("addCategoryBtn") && document.getElementById("addCategoryBtn").addEventListener("click", function () {
   var input = document.getElementById("newCategoryName");
   var name = input.value.trim();
@@ -1032,16 +1083,28 @@ if (categoryListEl) {
     var slug = card.getAttribute("data-id");
     if (ev.target.closest(".category-sync-btn")) {
       var syncBtn = ev.target.closest(".category-sync-btn");
+      var pendingConnect = syncBtn.classList.contains("category-confirm-btn");
       syncBtn.disabled = true;
-      syncBtn.textContent = "Yenileniyor...";
+      syncBtn.textContent = pendingConnect ? "Bağlantı doğrulanıyor..." : "Yenileniyor...";
       fetch("/api/automation/categories/" + encodeURIComponent(slug) + "/sync-channel", { method: "POST" })
-        .then(function (r) { return r.json(); }).then(function (d) {
-          if (!d.ok) throw new Error(d.error || "Kanal adı okunamadı.");
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (result) {
+          if (result.ok && result.data.ok) return result.data;
+          if (!pendingConnect) throw new Error(result.data.error || "Kanal adı okunamadı.");
+          return fetch("/api/automation/categories/" + encodeURIComponent(slug) + "/confirm-connect", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({})
+          }).then(function (r) { return r.json(); }).then(function (d) {
+            if (!d.ok) throw new Error(d.error || "Hesap bağlantısı kaydedilemedi.");
+            return d;
+          });
+        }).then(function () {
           loadAutomationCategories(true);
         }).catch(function (error) {
           window.alert(error.message);
           syncBtn.disabled = false;
-          syncBtn.textContent = "Kanal adını yenile";
+          syncBtn.textContent = pendingConnect ? "Girişi tamamladım" : "Kanal adını yenile";
         });
       return;
     }
@@ -1056,7 +1119,6 @@ if (categoryListEl) {
     }
     if (ev.target.closest(".category-connect-btn")) {
       var connectBtn = ev.target.closest(".category-connect-btn");
-      categoryConnectPending = slug;
       connectBtn.disabled = true;
       connectBtn.textContent = "Chrome açılıyor...";
       fetch("/api/automation/categories/" + encodeURIComponent(slug) + "/connect", { method: "POST" })
@@ -1065,7 +1127,7 @@ if (categoryListEl) {
           connectBtn.disabled = false;
           connectBtn.textContent = "Girişi tamamladım";
           connectBtn.classList.remove("category-connect-btn");
-          connectBtn.classList.add("category-sync-btn");
+          connectBtn.classList.add("category-sync-btn", "category-confirm-btn");
           window.alert("Chrome'da YouTube girişini tamamlayın. Pencereyi kapattıktan sonra 'Girişi tamamladım' düğmesine basın.");
         }).catch(function (error) {
           window.alert(error.message);

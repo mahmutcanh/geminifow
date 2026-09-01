@@ -6,6 +6,7 @@ API Anahtarı gerektirmeden Playwright tarayıcısı üzerinden doğrudan YouTub
 import re
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -16,6 +17,13 @@ DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 PROFILES_DIR = DATA_DIR / "youtube_profiles"
 PROFILES_DIR.mkdir(parents=True, exist_ok=True)
+CHANNEL_LOCKS: dict[str, threading.Lock] = {}
+CHANNEL_LOCKS_GUARD = threading.Lock()
+
+
+def channel_lock(channel_id: str) -> threading.Lock:
+    with CHANNEL_LOCKS_GUARD:
+        return CHANNEL_LOCKS.setdefault(channel_id, threading.Lock())
 
 
 def channel_paths(channel_id: str) -> tuple[Path, Path]:
@@ -126,8 +134,12 @@ def open_youtube_login_browser(channel_id: str = "default", timeout_seconds: int
         return {"ok": False, "error": f"Tarayıcı açma hatası: {str(e)}"}
 
 
-def get_youtube_channel_info(channel_id: str = "default") -> dict:
+def _get_youtube_channel_info(channel_id: str = "default") -> dict:
     profile_dir, _ = channel_paths(channel_id)
+    login_marker = profile_dir / ".login_in_progress"
+    if login_marker.exists():
+        return {"ok": False, "connected": False, "error": "Giriş penceresi hâlâ açık. YouTube girişini tamamlayıp Chrome penceresini kapatın."}
+    cleanup_profile_chrome(profile_dir)
     try:
         with sync_playwright() as playwright:
             context = playwright.chromium.launch_persistent_context(
@@ -160,7 +172,17 @@ def get_youtube_channel_info(channel_id: str = "default") -> dict:
         return {"ok": False, "connected": False, "error": str(exc)[:300]}
 
 
-def upload_video_to_youtube(
+def get_youtube_channel_info(channel_id: str = "default") -> dict:
+    lock = channel_lock(channel_id)
+    if not lock.acquire(blocking=False):
+        return {"ok": False, "connected": False, "error": "Bu kanalda başka bir YouTube işlemi devam ediyor. İşlem tamamlanınca tekrar deneyin."}
+    try:
+        return _get_youtube_channel_info(channel_id)
+    finally:
+        lock.release()
+
+
+def _upload_video_to_youtube(
     video_path: Path | str,
     title: str,
     description: str = "",
@@ -180,6 +202,8 @@ def upload_video_to_youtube(
     tags_list = tags or []
     tags_str = ", ".join(tags_list) if isinstance(tags_list, list) else str(tags_list)
     profile_dir, cookies_file = channel_paths(channel_id)
+    if (profile_dir / ".login_in_progress").exists():
+        return {"ok": False, "error": "YouTube giriş penceresi hâlâ açık. Girişi tamamlayıp Chrome penceresini kapattıktan sonra tekrar deneyin."}
     cleanup_profile_chrome(profile_dir)
 
     try:
@@ -217,7 +241,7 @@ def upload_video_to_youtube(
                 if skip_to_studio.count() == 0:
                     skip_to_studio = page.get_by_text("YOUTUBE STUDIO'YA GEÇ", exact=False)
                 if skip_to_studio.count() > 0:
-                    skip_to_studio.first.click()
+                    skip_to_studio.first.click(force=True)
                     time.sleep(3)
 
                 # Check if login is required
@@ -235,9 +259,9 @@ def upload_video_to_youtube(
                     raise YouTubeBotError("YouTube Studio 'Oluştur' düğmesi bulunamadı. Lütfen oturumun açık olduğunu doğrulayın.")
                 
                 if hasattr(create_btn, 'click'):
-                    create_btn.click()
+                    create_btn.click(force=True)
                 else:
-                    create_btn.first.click()
+                    create_btn.first.click(force=True)
                 time.sleep(1.5)
 
                 # Click 'Upload videos' / 'Video yükle'
@@ -249,7 +273,7 @@ def upload_video_to_youtube(
                 
                 if upload_item.count() == 0:
                     raise YouTubeBotError("'Video Yükle' seçeneği bulunamadı.")
-                upload_item.first.click()
+                upload_item.first.click(force=True)
                 time.sleep(2.5)
 
                 # File input
@@ -263,7 +287,7 @@ def upload_video_to_youtube(
                 # Title input
                 title_box = page.query_selector("#title-textarea #textbox") or page.query_selector("ytcp-social-suggestions-textbox[label*='Başlık'] #textbox") or page.query_selector("ytcp-social-suggestions-textbox[label*='Title'] #textbox")
                 if title_box:
-                    title_box.click()
+                    title_box.click(force=True)
                     page.keyboard.press("Control+A")
                     page.keyboard.press("Backspace")
                     clean_title = (title[:95] + " #Shorts") if "#Shorts" not in title else title[:100]
@@ -273,7 +297,7 @@ def upload_video_to_youtube(
                 # Description input
                 desc_box = page.query_selector("#description-textarea #textbox") or page.query_selector("ytcp-social-suggestions-textbox[label*='Açıklama'] #textbox") or page.query_selector("ytcp-social-suggestions-textbox[label*='Description'] #textbox")
                 if desc_box and description:
-                    desc_box.click()
+                    desc_box.click(force=True)
                     clean_desc = description + "\n\n#Shorts #AI #Gemini #Video"
                     desc_box.fill(clean_desc[:4900])
                     time.sleep(1)
@@ -289,7 +313,7 @@ def upload_video_to_youtube(
                 # Child safety: 'No, it's not made for kids'
                 no_kids_radio = page.query_selector("tp-yt-paper-radio-button[name='VIDEO_MADE_FOR_KIDS_NOT_MFK']") or page.query_selector("#made-for-kids-group tp-yt-paper-radio-button:nth-child(2)")
                 if no_kids_radio:
-                    no_kids_radio.click()
+                    no_kids_radio.click(force=True)
                     time.sleep(0.5)
 
                 # Tags if provided
@@ -298,9 +322,9 @@ def upload_video_to_youtube(
                         show_more = page.query_selector("ytcp-button#toggle-button") or page.get_by_text("DAHA FAZLA GÖSTER", exact=False) or page.get_by_text("SHOW MORE", exact=False)
                         if show_more:
                             if hasattr(show_more, 'click'):
-                                show_more.click()
+                                show_more.click(force=True)
                             else:
-                                show_more.first.click()
+                                show_more.first.click(force=True)
                             time.sleep(1)
                         tags_input = page.query_selector("#tags-container input") or page.query_selector("input[aria-label*='Etiket']") or page.query_selector("input[aria-label*='Tags']")
                         if tags_input:
@@ -316,27 +340,32 @@ def upload_video_to_youtube(
                 # (yeni arayuzde native .click() cogu zaman sessizce hicbir sey yapmiyor);
                 # rol/metin tabanli locator ile gercek tiklama simule edilip buton
                 # etkinlesene kadar (video isleme surebilir) beklenir.
-                ileri_btn = page.get_by_role("button", name="İleri")
+                ileri_btn = page.locator("#next-button, ytcp-button#next-button").filter(has_text=re.compile(r"^(İleri|Next)$", re.I))
+                if ileri_btn.count() == 0:
+                    ileri_btn = page.get_by_role("button", name=re.compile(r"^(İleri|Next)$", re.I))
+                
                 pub_radio_probe = page.locator(
                     "tp-yt-paper-radio-button[name='PUBLIC'], tp-yt-paper-radio-button[name='PRIVATE'], tp-yt-paper-radio-button[name='UNLISTED']"
                 )
-                nav_deadline = time.time() + 300  # video islenmesi uzun surebilir
+                nav_deadline = time.time() + 300
                 while time.time() < nav_deadline:
                     if pub_radio_probe.count() > 0 and pub_radio_probe.first.is_visible():
                         break
-                    if ileri_btn.count() > 0:
-                        try:
-                            if ileri_btn.first.is_enabled():
-                                ileri_btn.first.click(force=True)
-                                time.sleep(1.5)
-                            else:
-                                time.sleep(2)
-                        except Exception:
-                            time.sleep(2)
-                    else:
-                        time.sleep(2)
+                    try:
+                        next_el = page.locator("#next-button, ytcp-button#next-button, button:has-text('İleri'), button:has-text('Next')").filter(has_text=re.compile(r"^(İleri|Next)$", re.I)).first
+                        if next_el.count() > 0:
+                            next_el.evaluate("element => element.click()")
+                            time.sleep(1.5)
+                            continue
+                        if ileri_btn.count() > 0:
+                            ileri_btn.first.evaluate("element => element.click()")
+                            time.sleep(1.5)
+                            continue
+                    except Exception:
+                        pass
+                    time.sleep(2)
                 else:
-                    raise YouTubeBotError("Görünürlük adımına ulaşılamadı (video işleme zaman aşımına uğradı).")
+                    raise YouTubeBotError("YouTube Studio görünürlük adımına geçemedi. Video işleme veya İleri/Next düğmesi zaman aşımına uğradı.")
 
                 # Get video URL (goruntuleme oncesi, gercek short linki)
                 video_url_elem = page.query_selector("a.style-scope.ytcp-video-info") or page.query_selector("a[href*='youtu.be']")
@@ -346,11 +375,12 @@ def upload_video_to_youtube(
                 # Yeni arayuzde ayri bir 'SCHEDULE' radio'su yok: 'Planlayin' paneli
                 # tarih/saat iceren bagimsiz bir bolum, secilince ust panel otomatik kapaniyor.
                 if draft:
-                    vis_btn = page.query_selector("tp-yt-paper-radio-button[name='PRIVATE']")
-                    if vis_btn:
-                        vis_btn.click()
-                        time.sleep(1)
-                    expected_btn_re = re.compile(r"^(Kaydet|Save)$")
+                    vis_btn = page.locator("tp-yt-paper-radio-button[name='PRIVATE']:visible").last
+                    if vis_btn.count() == 0:
+                        raise YouTubeBotError("YouTube Studio taslak görünürlüğü seçeneği bulunamadı.")
+                    vis_btn.evaluate("element => element.click()")
+                    time.sleep(1)
+                    expected_btn_re = re.compile(r"^(Kaydet|Save)$", re.I)
                 elif publish_at:
                     plan_header = page.get_by_text("Planlayın", exact=False).first
                     if plan_header.count() > 0:
@@ -380,7 +410,7 @@ def upload_video_to_youtube(
                     if not filled:
                         raise YouTubeBotError("Zamanlama saat alanı bulunamadı, video geçmiş bir saatte kalıp reddedilebilirdi.")
                     time.sleep(0.5)
-                    expected_btn_re = re.compile(r"^Planla$")
+                    expected_btn_re = re.compile(r"^(Planla|Schedule)$", re.I)
                 else:
                     priv = privacy_status.lower()
                     if priv == "private":
@@ -391,9 +421,9 @@ def upload_video_to_youtube(
                         vis_name = "PUBLIC"
                     vis_btn = page.query_selector(f"tp-yt-paper-radio-button[name='{vis_name}']")
                     if vis_btn:
-                        vis_btn.click()
+                        vis_btn.click(force=True)
                         time.sleep(1)
-                    expected_btn_re = re.compile(r"^(Yayınla|Kaydet)$")
+                    expected_btn_re = re.compile(r"^(Yayınla|Publish|Kaydet|Save)$", re.I)
 
                 # Click the primary action button ('Yayınla' / 'Kaydet' / 'Planla').
                 # '#done-button' id'si yeni arayuzde kaldirilmis; metin/rol bazli bulunmali.
@@ -401,7 +431,7 @@ def upload_video_to_youtube(
                 if action_btn.count() == 0 or not action_btn.first.is_enabled():
                     raise YouTubeBotError("YouTube Studio 'Yayınla / Zamanla / Planla' butonuna tıklanamadı.")
 
-                action_btn.first.click(force=True)
+                action_btn.first.evaluate("element => element.click()")
 
                 # Diyalogun gercekten kapanip islemin tamamlandigini dogrula (sahte basari
                 # raporlamamak icin - eskiden butona tiklanip tiklanmadigina bakilmiyordu).
@@ -442,3 +472,34 @@ def upload_video_to_youtube(
 
     except Exception as exc:
         return {"ok": False, "error": f"YouTube Yükleme Hatası: {str(exc)}"}
+
+
+def upload_video_to_youtube(
+    video_path: Path | str,
+    title: str,
+    description: str = "",
+    tags: list[str] | None = None,
+    privacy_status: str = "public",
+    publish_at: str | None = None,
+    headless: bool = True,
+    channel_id: str = "default",
+    draft: bool = False,
+    thumbnail_path: Path | str | None = None,
+) -> dict:
+    lock = channel_lock(channel_id)
+    lock.acquire()
+    try:
+        return _upload_video_to_youtube(
+            video_path=video_path,
+            title=title,
+            description=description,
+            tags=tags,
+            privacy_status=privacy_status,
+            publish_at=publish_at,
+            headless=headless,
+            channel_id=channel_id,
+            draft=draft,
+            thumbnail_path=thumbnail_path,
+        )
+    finally:
+        lock.release()

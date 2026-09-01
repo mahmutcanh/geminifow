@@ -100,6 +100,10 @@ app.config.update(
 JOBS_LOCK = threading.RLock()
 POOL_LOCK = threading.RLock()
 JOB_QUEUE: queue.Queue[str] = queue.Queue(maxsize=MAX_QUEUE_SIZE)
+YOUTUBE_QUEUE: queue.Queue[tuple[str, bool]] = queue.Queue(maxsize=MAX_QUEUE_SIZE)
+YOUTUBE_CANCELLED: set[str] = set()
+YOUTUBE_ACTIVE: set[str] = set()
+YOUTUBE_LOCK = threading.RLock()
 JOBS: dict[str, dict] = {}
 POOL: list[dict] = []
 ALLOWED_USERS: set[str] = set()
@@ -109,6 +113,7 @@ CREDITS_CACHE = {"credits": None, "checkedAt": None, "expiresAt": 0.0, "loading"
 CREDITS_LOCK = threading.RLock()
 USERS_LOCK = threading.RLock()
 WORKER_STARTED = False
+YOUTUBE_WORKER_STARTED = False
 WORKER_LOCK = threading.Lock()
 BOT_EXECUTION_LOCK = threading.Lock()
 
@@ -184,6 +189,10 @@ def load_state() -> None:
         if item.get("status") == "işleniyor":
             item["status"] = "hata"
             item["note"] = "Panel yeniden başlatıldığı için yarım kalan iş iptal edildi."
+        if item.get("youtubeStatus") in {"sırada", "paylaşılıyor"}:
+            item["youtubeStatus"] = "iptal"
+            item["youtubeQueuePosition"] = None
+            item["youtubeError"] = "Panel yeniden başlatıldığı için YouTube işlemi iptal edildi."
         JOBS[item["id"]] = item
     for item in read_json_list(POOL_FILE):
         if valid_pool_item(item):
@@ -314,7 +323,9 @@ def run_bot_generate(job_id: str, prompt: str, settings: dict | None = None, tim
     if settings:
         cmd.extend(["--settings", json.dumps(settings, ensure_ascii=False)])
     err_log = BOT_DIR / f"bot_stderr_{job_id}.log"
-    popen_kwargs = {"cwd": str(BOT_DIR), "stdout": subprocess.DEVNULL, "stderr": subprocess.PIPE, "text": True, "encoding": "utf-8", "errors": "replace"}
+    process_log = BOT_DIR / f"bot_{job_id}.log"
+    log_handle = process_log.open("w", encoding="utf-8")
+    popen_kwargs = {"cwd": str(BOT_DIR), "stdout": log_handle, "stderr": subprocess.STDOUT, "text": True, "encoding": "utf-8", "errors": "replace"}
     if os.name == "nt":
         popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
@@ -322,11 +333,16 @@ def run_bot_generate(job_id: str, prompt: str, settings: dict | None = None, tim
     with BOT_EXECUTION_LOCK:
         proc = subprocess.Popen(cmd, **popen_kwargs)
         try:
-            _, stderr = proc.communicate(timeout=timeout_s)
+            proc.wait(timeout=timeout_s)
         except subprocess.TimeoutExpired:
             terminate_process_tree(proc)
-            stderr = ""
-            result = {"ok": False, "error": "Video oluşturma toplam zaman sınırını aştı."}
+            if result_file.exists():
+                try:
+                    result = json.loads(result_file.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    result = {"ok": False, "error": f"Video oluşturma toplam zaman sınırını aştı. Log: {process_log.name}"}
+            else:
+                result = {"ok": False, "error": f"Video oluşturma toplam zaman sınırını aştı. Log: {process_log.name}"}
         else:
             if result_file.exists():
                 try:
@@ -334,11 +350,13 @@ def run_bot_generate(job_id: str, prompt: str, settings: dict | None = None, tim
                 except (OSError, json.JSONDecodeError):
                     result = {"ok": False, "error": "Bot sonucu doğrulanamadı."}
             elif proc.returncode:
-                result = {"ok": False, "error": "Bot beklenmedik biçimde kapandı."}
+                result = {"ok": False, "error": f"Bot beklenmedik biçimde kapandı. Log: {process_log.name}"}
             else:
-                result = {"ok": False, "error": "Bot sonuç üretmeden kapandı."}
-    if stderr:
-        err_log.write_text(stderr[-20_000:], encoding="utf-8")
+                result = {"ok": False, "error": f"Bot sonuç üretmeden kapandı. Log: {process_log.name}"}
+        finally:
+            log_handle.close()
+    if process_log.exists() and not result.get("ok"):
+        err_log.write_text(process_log.read_text(encoding="utf-8", errors="replace")[-20_000:], encoding="utf-8")
     result_file.unlink(missing_ok=True)
     return result
 
@@ -498,6 +516,65 @@ def publish_job_to_youtube(job: dict, force: bool = False, draft: bool = False) 
             save_jobs()
 
 
+def enqueue_youtube_job(job_id: str, draft: bool) -> None:
+    with YOUTUBE_LOCK:
+        YOUTUBE_CANCELLED.discard(job_id)
+        YOUTUBE_QUEUE.put_nowait((job_id, draft))
+        queued_ids = [queued_id for queued_id, _ in list(YOUTUBE_QUEUE.queue)]
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if job:
+            job["youtubeStatus"] = "sırada"
+            job["youtubeQueuePosition"] = queued_ids.index(job_id) + 1 if job_id in queued_ids else 1
+            job["youtubeError"] = None
+            save_jobs()
+
+
+def refresh_youtube_queue_positions() -> None:
+    with YOUTUBE_LOCK:
+        queued_ids = [job_id for job_id, _ in list(YOUTUBE_QUEUE.queue) if job_id not in YOUTUBE_CANCELLED]
+    with JOBS_LOCK:
+        for job in JOBS.values():
+            if job.get("youtubeStatus") == "sırada":
+                job_id = job.get("id")
+                job["youtubeQueuePosition"] = queued_ids.index(job_id) + 1 if job_id in queued_ids else None
+        save_jobs()
+
+
+def youtube_worker_loop() -> None:
+    while True:
+        job_id, draft = YOUTUBE_QUEUE.get()
+        try:
+            with YOUTUBE_LOCK:
+                cancelled = job_id in YOUTUBE_CANCELLED
+                YOUTUBE_CANCELLED.discard(job_id)
+                if not cancelled:
+                    YOUTUBE_ACTIVE.add(job_id)
+            if cancelled:
+                continue
+            with JOBS_LOCK:
+                job = JOBS.get(job_id)
+                if not job:
+                    continue
+                job["youtubeStatus"] = "paylaşılıyor"
+                job["youtubeQueuePosition"] = None
+                save_jobs()
+                payload = dict(job)
+            publish_job_to_youtube(payload, True, draft)
+        except Exception:
+            app.logger.exception("YouTube worker hatası")
+            with JOBS_LOCK:
+                if job_id in JOBS:
+                    JOBS[job_id]["youtubeStatus"] = "hata"
+                    JOBS[job_id]["youtubeError"] = "YouTube yüklemesinde beklenmeyen sunucu hatası oluştu."
+                    save_jobs()
+        finally:
+            with YOUTUBE_LOCK:
+                YOUTUBE_ACTIVE.discard(job_id)
+            YOUTUBE_QUEUE.task_done()
+            refresh_youtube_queue_positions()
+
+
 def worker_loop() -> None:
     while True:
         job_id = JOB_QUEUE.get()
@@ -534,7 +611,14 @@ def worker_loop() -> None:
                     CREDITS_CACHE["loading"] = True
                     threading.Thread(target=refresh_credits, name="credits-after-job", daemon=True).start()
             if succeeded and job_snapshot.get("categoryId"):
-                threading.Thread(target=publish_job_to_youtube, args=(job_snapshot, False, True), name="youtube-draft", daemon=True).start()
+                try:
+                    enqueue_youtube_job(job_id, True)
+                except queue.Full:
+                    with JOBS_LOCK:
+                        if job_id in JOBS:
+                            JOBS[job_id]["youtubeStatus"] = "hata"
+                            JOBS[job_id]["youtubeError"] = "YouTube kuyruğu dolu."
+                            save_jobs()
         except Exception:
             app.logger.exception("Worker hatası")
             with JOBS_LOCK:
@@ -548,12 +632,14 @@ def worker_loop() -> None:
 
 
 def ensure_worker() -> None:
-    global WORKER_STARTED
+    global WORKER_STARTED, YOUTUBE_WORKER_STARTED
     with WORKER_LOCK:
-        if WORKER_STARTED:
-            return
-        threading.Thread(target=worker_loop, name="flow-worker", daemon=True).start()
-        WORKER_STARTED = True
+        if not WORKER_STARTED:
+            threading.Thread(target=worker_loop, name="flow-worker", daemon=True).start()
+            WORKER_STARTED = True
+        if not YOUTUBE_WORKER_STARTED:
+            threading.Thread(target=youtube_worker_loop, name="youtube-worker", daemon=True).start()
+            YOUTUBE_WORKER_STARTED = True
 
 
 def image_extension(data: bytes, requested_ext: str) -> str | None:
@@ -948,20 +1034,39 @@ def api_job_youtube(job_id):
         if not job or job.get("status") != "hazır" or not job.get("videoFile"):
             return jsonify({"ok": False, "error": "Hazır video bulunamadı."}), 404
         category_id = job.get("categoryId")
-        if job.get("youtubeStatus") in {"paylaşılıyor", "paylaşıldı"}:
-            return jsonify({"ok": False, "error": "Video zaten paylaşılıyor veya paylaşılmış."}), 409
+        if job.get("youtubeStatus") in {"sırada", "paylaşılıyor", "paylaşıldı", "taslak"}:
+            return jsonify({"ok": False, "error": "Video zaten sırada, yükleniyor veya taslaklara eklenmiş."}), 409
     with AUTOMATION_LOCK:
         category = AUTOMATION_CATEGORIES.get(category_id)
         if not category or not category.get("channelConnected"):
             return jsonify({"ok": False, "error": "Önce bağlı YouTube kategorisi seçin."}), 400
+    try:
+        enqueue_youtube_job(job_id, True)
+    except queue.Full:
+        return jsonify({"ok": False, "error": "YouTube kuyruğu dolu."}), 503
     with JOBS_LOCK:
-        job = JOBS[job_id]
-        job["youtubeStatus"] = "paylaşılıyor"
+        position = JOBS[job_id].get("youtubeQueuePosition")
+    return jsonify({"ok": True, "position": position}), 202
+
+
+@app.route("/api/jobs/<job_id>/youtube/cancel", methods=["POST"])
+def api_job_youtube_cancel(job_id):
+    with YOUTUBE_LOCK:
+        if job_id in YOUTUBE_ACTIVE:
+            return jsonify({"ok": False, "error": "Aktif YouTube yüklemesi güvenli biçimde iptal edilemiyor."}), 409
+        YOUTUBE_CANCELLED.add(job_id)
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if not job or job.get("youtubeStatus") != "sırada":
+            with YOUTUBE_LOCK:
+                YOUTUBE_CANCELLED.discard(job_id)
+            return jsonify({"ok": False, "error": "İptal edilebilir sırada işlem bulunamadı."}), 404
+        job["youtubeStatus"] = "iptal"
+        job["youtubeQueuePosition"] = None
         job["youtubeError"] = None
         save_jobs()
-        payload = dict(job)
-    threading.Thread(target=publish_job_to_youtube, args=(payload, True), name=f"youtube-{job_id[:8]}", daemon=True).start()
-    return jsonify({"ok": True}), 202
+    refresh_youtube_queue_positions()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/pool", methods=["GET"])
@@ -1060,7 +1165,7 @@ def api_ai_chat():
     payload = json.dumps({"model": AI_MODEL, "stream": False, "messages": clean_messages}).encode("utf-8")
     upstream = urllib.request.Request(f"{AI_API_BASE}/chat/completions", data=payload, headers={"Content-Type": "application/json", "Authorization": f"Bearer {AI_API_KEY}", "User-Agent": "curl/8.0"}, method="POST")
     try:
-        with urllib.request.urlopen(upstream, timeout=60) as response:
+        with urllib.request.urlopen(upstream, timeout=90) as response:
             body = json.loads(response.read().decode("utf-8"))
         reply = body["choices"][0]["message"]["content"]
         if not isinstance(reply, str):

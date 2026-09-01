@@ -18,6 +18,7 @@ flow_bot/flow_profiles/
 flow_bot/result*.json
 flow_bot/*.log
 flow_bot/_diag*
+flow_bot/diagnostic_*
 webpanel/*.log
 webpanel/static/videos/*
 webpanel/static/pool_images/*

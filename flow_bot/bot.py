@@ -91,6 +91,64 @@ class FlowBot:
             except Exception:
                 pass
 
+    def diagnostic_state(self, prompt_text: str) -> dict:
+        return self.page.evaluate(
+            r"""
+            (promptText) => {
+                const visible = el => {
+                    const rect = el.getBoundingClientRect();
+                    const style = getComputedStyle(el);
+                    return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+                };
+                const normalize = value => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                const probe = normalize(promptText).slice(0, 100);
+                const text = normalize(document.body.innerText);
+                const videos = Array.from(document.querySelectorAll('video')).filter(visible).map(video => ({
+                    src: video.currentSrc || video.src || '',
+                    readyState: video.readyState,
+                    duration: Number.isFinite(video.duration) ? video.duration : null
+                }));
+                const promptMatches = Array.from(document.querySelectorAll('div, p, span')).filter(el => {
+                    if (!visible(el) || el.closest('[contenteditable="true"]')) return false;
+                    return probe && normalize(el.textContent).includes(probe);
+                }).length;
+                const errors = [
+                    'yetersiz kredi', 'insufficient credits',
+                    'çok fazla istek', 'too many requests',
+                    'bir hata oluştu', 'something went wrong',
+                    'hizmet kullanılamıyor', 'service unavailable'
+                ].filter(label => text.includes(label));
+                return {
+                    url: location.href,
+                    title: document.title,
+                    promptMatches,
+                    videos,
+                    errors,
+                    bodyTail: String(document.body.innerText || '').replace(/\s+/g, ' ').slice(-1200)
+                };
+            }
+            """,
+            prompt_text,
+        )
+
+    def save_diagnostics(self, label: str, state: dict | None = None) -> None:
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_label = re.sub(r"[^a-zA-Z0-9_-]", "-", label)[:50]
+        prefix = BOT_DIR / f"diagnostic_{stamp}_{safe_label}"
+        try:
+            self.page.screenshot(path=str(prefix.with_suffix(".png")), full_page=True)
+        except Exception:
+            log.exception("Tanı ekran görüntüsü kaydedilemedi")
+        try:
+            prefix.with_suffix(".html").write_text(self.page.content(), encoding="utf-8")
+        except Exception:
+            log.exception("Tanı HTML kaydedilemedi")
+        try:
+            prefix.with_suffix(".json").write_text(json.dumps(state or {}, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            log.exception("Tanı JSON kaydedilemedi")
+        self.step(f"Tani dosyalari kaydedildi: {prefix.name}")
+
     def start(self):
         cleanup_orphan_chrome(self.profile_dir)
         time.sleep(0.5)
@@ -323,7 +381,19 @@ class FlowBot:
             return None
 
         self.step("Video olusturma baslatiliyor")
+        before_url = page.url
         box.press("Enter")
+        page.wait_for_timeout(1000)
+        prompt_after_submit = box.inner_text().strip()
+        initial_state = self.diagnostic_state(prompt_text)
+        self.step(
+            f"Gonderim sonrasi durum: url={initial_state['url']!r}, "
+            f"prompt_kutusu_uzunlugu={len(prompt_after_submit)}, "
+            f"prompt_eslesmesi={initial_state['promptMatches']}, hatalar={initial_state['errors']}"
+        )
+        if prompt_after_submit == prompt_text.strip() and initial_state["promptMatches"] == 0 and page.url == before_url:
+            self.save_diagnostics("submit-not-acknowledged", initial_state)
+            return {"type": "submit_not_acknowledged", "message": "Flow oluşturma isteğini kabul etmedi. Tanı kaydı oluşturuldu."}
 
         # Icerik politikasi reddi toast'u birkac saniye icinde kaybolabiliyor -
         # buyuk 6sn'lik bekleyisten once sik sik (yaklasik her 500ms) kontrol et.
@@ -346,8 +416,38 @@ class FlowBot:
         # YAPMIYORUZ, sadece gercek <video> elementini ariyoruz. Gercekten basarisiz
         # olursa donmus zaman asimina ugrar (timeout_s), o zaman genel hata dondurulur.
         start_time = time.time()
+        last_diagnostic_at = 0
+        failure_first_seen = None
         src = None
+        last_state = initial_state
         while time.time() - start_time < timeout_s and not src:
+            elapsed = time.time() - start_time
+            try:
+                last_state = self.diagnostic_state(prompt_text)
+                if elapsed - last_diagnostic_at >= 15:
+                    self.step(
+                        f"Flow durum t={int(elapsed)}sn: url={last_state['url']!r}, "
+                        f"prompt_eslesmesi={last_state['promptMatches']}, "
+                        f"video={len(last_state['videos'])}, hatalar={last_state['errors']}"
+                    )
+                    last_diagnostic_at = elapsed
+                if last_state["videos"]:
+                    candidate = next((video["src"] for video in last_state["videos"] if video["src"]), None)
+                    if candidate:
+                        src = candidate
+                        self.step(f"Video hazir! ({int(elapsed)} sn)")
+                        break
+                if last_state["errors"]:
+                    failure_first_seen = failure_first_seen or time.time()
+                    if time.time() - failure_first_seen >= 12:
+                        self.save_diagnostics("flow-terminal-error", last_state)
+                        labels = ", ".join(last_state["errors"])
+                        return {"type": "generation_failed", "message": f"Flow üretimi başarısız oldu: {labels}"}
+                else:
+                    failure_first_seen = None
+            except Exception as exc:
+                self.step(f"Flow durum okuma hatasi: {str(exc)[:180]}")
+
             # Icerik politikasi ihlali - yedek kontrol (erken yakalama kacirilirsa).
             late_msg = check_policy_violation()
             if late_msg:
@@ -385,8 +485,14 @@ class FlowBot:
                         const normalize = value => String(value || '').replace(/\\s+/g, ' ').trim().toLowerCase();
                         const prompt = normalize(promptText);
                         const probes = [prompt.slice(0, 180), prompt.slice(0, 100), prompt.slice(0, 60)].filter(Boolean);
+                        const visible = el => {
+                            const rect = el.getBoundingClientRect();
+                            const style = getComputedStyle(el);
+                            return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+                        };
                         const all = Array.from(document.querySelectorAll('div, p, span'));
                         const hits = all.filter(el => {
+                            if (!visible(el) || el.closest('[contenteditable="true"]')) return false;
                             const text = normalize(el.textContent);
                             return text && probes.some(probe => text.includes(probe));
                         }).sort((a, b) => a.textContent.length - b.textContent.length);
@@ -418,7 +524,12 @@ class FlowBot:
                 self.step("Zaman asimina ugrandi")
 
         if not src:
-            return {"type": "text", "message": "Video uretimi zaman asimina ugradi veya video elementi bulunamadi."}
+            self.save_diagnostics("video-timeout", last_state)
+            return {
+                "type": "video_timeout",
+                "message": "Flow video üretimini tamamlamadı veya sonuç kartı algılanamadı. Tanı kaydı oluşturuldu.",
+                "diagnostic": last_state,
+            }
         self.step(f"Video kaynagi: {src[:90]}")
 
         filename = f"flow_{uuid.uuid4().hex}.mp4"

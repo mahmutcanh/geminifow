@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -93,12 +94,13 @@ def test_job_category_and_manual_youtube_trigger(panel, auth_client, monkeypatch
     assert res.status_code == 200
     assert panel.JOBS["job1"]["categoryId"] == "orgu-dunyasi"
 
-    called = []
-    monkeypatch.setattr(panel, "publish_job_to_youtube", lambda job, force=True: called.append(job["id"]))
+    queued = []
+    monkeypatch.setattr(panel, "enqueue_youtube_job", lambda job_id, draft: (queued.append((job_id, draft)), panel.JOBS[job_id].update({"youtubeStatus": "sırada", "youtubeQueuePosition": 1})))
 
     res_yt = auth_client.post("/api/jobs/job1/youtube", json={}, headers={"X-CSRF-Token": "test-csrf"})
     assert res_yt.status_code == 202
-    assert panel.JOBS["job1"]["youtubeStatus"] == "paylaşılıyor"
+    assert queued == [("job1", True)]
+    assert panel.JOBS["job1"]["youtubeStatus"] == "sırada"
 
 
 def test_pool_add_returns_success(panel, auth_client):
@@ -153,6 +155,101 @@ def test_admin_can_create_and_manage_automation_category(panel, auth_client):
     delete = auth_client.delete(f"/api/automation/categories/{slug}", headers={"X-CSRF-Token": "test-csrf"})
     assert delete.status_code == 200
     assert slug not in panel.AUTOMATION_CATEGORIES
+
+
+def test_confirm_connect_marks_category_connected(panel, auth_client):
+    panel.AUTOMATION_CATEGORIES["doga"] = {
+        "name": "Doğa",
+        "enabled": False,
+        "channelConnected": False,
+        "channelName": "",
+    }
+
+    response = auth_client.post(
+        "/api/automation/categories/doga/confirm-connect",
+        json={},
+        headers={"X-CSRF-Token": "test-csrf"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["category"]["connected"] is True
+    assert panel.AUTOMATION_CATEGORIES["doga"]["channelConnected"] is True
+
+
+def test_sync_channel_marks_category_connected(panel, auth_client, monkeypatch):
+    panel.AUTOMATION_CATEGORIES["doga"] = {
+        "name": "Doğa",
+        "enabled": False,
+        "channelConnected": False,
+        "channelName": "",
+    }
+    service = type("YouTubeService", (), {"get_youtube_channel_info": staticmethod(lambda channel_id: {"ok": True, "channel_name": "Doğa Kanalı"})})
+    monkeypatch.setitem(sys.modules, "youtube_bot_service", service)
+
+    response = auth_client.post(
+        "/api/automation/categories/doga/sync-channel",
+        headers={"X-CSRF-Token": "test-csrf"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["category"]["channelName"] == "Doğa Kanalı"
+    assert panel.AUTOMATION_CATEGORIES["doga"]["channelConnected"] is True
+
+
+def test_youtube_uploads_for_same_channel_are_serialized(monkeypatch, tmp_path):
+    import webpanel.youtube_bot_service as service
+
+    first_started = threading.Event()
+    release_first = threading.Event()
+    calls = []
+
+    def fake_upload(**kwargs):
+        calls.append(kwargs["title"])
+        if kwargs["title"] == "ilk":
+            first_started.set()
+            release_first.wait(timeout=2)
+        return {"ok": True}
+
+    monkeypatch.setattr(service, "_upload_video_to_youtube", fake_upload)
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"video")
+    results = []
+    first = threading.Thread(target=lambda: results.append(service.upload_video_to_youtube(video, "ilk", channel_id="kanal")))
+    second = threading.Thread(target=lambda: results.append(service.upload_video_to_youtube(video, "ikinci", channel_id="kanal")))
+
+    first.start()
+    assert first_started.wait(timeout=1)
+    second.start()
+    second.join(timeout=0.1)
+    assert second.is_alive()
+    release_first.set()
+    first.join(timeout=2)
+    second.join(timeout=2)
+
+    assert calls == ["ilk", "ikinci"]
+    assert all(result["ok"] for result in results)
+
+
+def test_youtube_share_is_queued(panel, auth_client, monkeypatch):
+    panel.AUTOMATION_CATEGORIES["doga"] = {"name": "Doğa", "channelConnected": True}
+    panel.JOBS["job-1"] = {"id": "job-1", "status": "hazır", "videoFile": "video.mp4", "categoryId": "doga"}
+    queued = []
+    monkeypatch.setattr(panel, "enqueue_youtube_job", lambda job_id, draft: queued.append((job_id, draft)))
+
+    response = auth_client.post("/api/jobs/job-1/youtube", headers={"X-CSRF-Token": "test-csrf"})
+
+    assert response.status_code == 202
+    assert queued == [("job-1", True)]
+
+
+def test_queued_youtube_share_can_be_cancelled(panel, auth_client):
+    panel.JOBS["job-1"] = {"id": "job-1", "youtubeStatus": "sırada", "youtubeQueuePosition": 1}
+
+    response = auth_client.post("/api/jobs/job-1/youtube/cancel", headers={"X-CSRF-Token": "test-csrf"})
+
+    assert response.status_code == 200
+    assert panel.JOBS["job-1"]["youtubeStatus"] == "iptal"
+    assert "job-1" in panel.YOUTUBE_CANCELLED
 
 
 def test_generate_rejects_unknown_automation_category(panel, auth_client, monkeypatch):
